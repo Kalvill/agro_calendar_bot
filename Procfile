@@ -1,0 +1,1 @@
+worker: python agro_bot.py

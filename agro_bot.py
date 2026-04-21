@@ -108,7 +108,10 @@ def msg_reminder(icon: str, name: str, time_str: str = "", desc: str = "",
 
 def msg_release(icon: str, name: str, time_str: str, desc: str = "",
                 direct: str = "", indirect: str = "", link: str = "") -> str:
-    parts = [f"{icon} <b>{a(name, link)}</b>", f"🕐 <b>{time_str}</b> · Варшава"]
+    now      = datetime.now(TZ)
+    date_str = f"{now.day:02d}.{now.month:02d}.{now.year}"
+    parts = [f"{icon} · <b>{a(name, link)}</b> ·"]
+    parts.append(f"🕐 · {time_str} · {date_str}")
     if desc:
         parts.extend(["", desc])
     if direct:

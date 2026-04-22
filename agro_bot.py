@@ -6,7 +6,7 @@ from telegram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # ========== НАЛАШТУВАННЯ ==========
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8641229015:AAHF6NmgYJM7ABHraR8MTib_FDXCWxESZuM")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8641229015:AAHmaBDmCZgf7-oHfoHtBfm2aZABnmH-M2g")
 CHAT_ID   = os.environ.get("CHAT_ID", "341010427")
 TZ        = pytz.timezone("Europe/Warsaw")
 # ==================================

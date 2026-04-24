@@ -18,10 +18,6 @@ WEEKDAYS_UK = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
 MONTHS_UK   = ["", "січня", "лютого", "березня", "квітня", "травня", "червня",
                "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"]
 
-# ─────────────────────────────────────────
-#  Посилання
-# ─────────────────────────────────────────
-
 LINKS = {
     "wasde":        "https://www.usda.gov/about-usda/general-information/staff-offices/office-chief-economist/commodity-markets/wasde-report",
     "crop":         "https://www.nass.usda.gov/Publications/National_Crop_Progress/",
@@ -32,10 +28,6 @@ LINKS = {
     "acreage":      "https://www.nass.usda.gov/Publications/Todays_Reports/",
     "news":         "https://www.financialjuice.com/home",
 }
-
-# ─────────────────────────────────────────
-#  Тікери (прямий і непрямий вплив)
-# ─────────────────────────────────────────
 
 TICKERS = {
     "crop_progress": {
@@ -81,16 +73,13 @@ async def send(text: str):
 # ─────────────────────────────────────────
 
 def a(text: str, url: str) -> str:
-    """Кліктабельне посилання."""
     return f'<a href="{url}">{text}</a>' if url else text
-
 
 def msg_reminder(icon: str, name: str, time_str: str = "", desc: str = "",
                  direct: str = "", indirect: str = "", note: str = "",
                  link: str = "") -> str:
     now      = datetime.now(TZ)
-    weekday  = WEEKDAYS_UK[now.weekday()]
-    date_str = f"{weekday}, {now.day:02d}.{now.month:02d}.{now.year}"
+    date_str = f"{WEEKDAYS_UK[now.weekday()]}, {now.day:02d}.{now.month:02d}.{now.year}"
     parts = [f"🔔 <b>{date_str} · Нагадування</b>", ""]
     parts.append(f"{icon} <b>{a(name, link)}</b>")
     if desc:
@@ -105,7 +94,6 @@ def msg_reminder(icon: str, name: str, time_str: str = "", desc: str = "",
         parts.append(f"🟡 {indirect}")
     return "\n".join(parts)
 
-
 def msg_release(icon: str, name: str, time_str: str, desc: str = "",
                 direct: str = "", indirect: str = "", link: str = "") -> str:
     now      = datetime.now(TZ)
@@ -119,6 +107,65 @@ def msg_release(icon: str, name: str, time_str: str, desc: str = "",
     if indirect:
         parts.append(f"🟡 {indirect}")
     return "\n".join(parts)
+
+# ─────────────────────────────────────────
+#  Обгортки для кронів (генерують текст у момент відправки)
+# ─────────────────────────────────────────
+
+async def job_crop_morning():
+    if 4 <= datetime.now(TZ).month <= 11:
+        t = TICKERS["crop_progress"]
+        await send(msg_reminder("🌱", "USDA Crop Progress", "22:00",
+                                desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
+                                direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
+
+async def job_crop_release():
+    if 4 <= datetime.now(TZ).month <= 11:
+        t = TICKERS["crop_progress"]
+        await send(msg_release("🌱", "USDA Crop Progress", "22:00",
+                               desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
+                               direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
+
+async def job_eia_morning():
+    t = TICKERS["eia"]
+    await send(msg_reminder("🛢", "EIA Petroleum Status Report", "16:30",
+                            desc="Тижневі запаси нафти/газу від Energy Information Administration.",
+                            direct=t["direct"], indirect=t["indirect"],
+                            note="Нафта → попит на biodiesel → соєва олія → ZM",
+                            link=LINKS["eia"]))
+
+async def job_eia_release():
+    t = TICKERS["eia"]
+    await send(msg_release("🛢", "EIA Petroleum Status Report", "16:30",
+                           desc="Тижневі запаси нафти/газу від Energy Information Administration.",
+                           direct=t["direct"], indirect=t["indirect"], link=LINKS["eia"]))
+
+async def job_export_morning():
+    t = TICKERS["export_sales"]
+    await send(msg_reminder("📊", "USDA Export Sales", "14:30",
+                            desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
+                            direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
+
+async def job_export_release():
+    t = TICKERS["export_sales"]
+    await send(msg_release("📊", "USDA Export Sales", "14:30",
+                           desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
+                           direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
+
+async def job_cot_morning():
+    t = TICKERS["cot"]
+    await send(msg_reminder("📈", "COT Report (CFTC)", "21:30",
+                            desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.",
+                            direct=t["direct"],
+                            note="Дані фіксуються у вівторок, публікуються в п'ятницю",
+                            link=LINKS["cot"]))
+
+async def job_cot_release():
+    t = TICKERS["cot"]
+    await send(msg_release("📈", "COT Report (CFTC)", "21:30",
+                           desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.\n"
+                                "Дані фіксуються у вівторок, публікуються в п'ятницю.",
+                           direct=t["direct"], link=LINKS["cot"]))
 
 # ─────────────────────────────────────────
 #  Структура разових подій
@@ -140,12 +187,8 @@ def _wasde(dt: datetime, note: str = "") -> dict:
         link         = LINKS["wasde"],
     )
 
-
 ONE_TIME = [
-
-    # ── USDA WASDE 2026 ──
-    _wasde(datetime(2026, 5, 12, tzinfo=TZ),
-           note="🔥 Перший прогноз нового сезону 2026/27 — НАЙВАЖЛИВІШИЙ!"),
+    _wasde(datetime(2026, 5, 12, tzinfo=TZ), note="🔥 Перший прогноз нового сезону 2026/27 — НАЙВАЖЛИВІШИЙ!"),
     _wasde(datetime(2026, 6, 11, tzinfo=TZ)),
     _wasde(datetime(2026, 7, 10, tzinfo=TZ)),
     _wasde(datetime(2026, 8, 12, tzinfo=TZ)),
@@ -154,75 +197,46 @@ ONE_TIME = [
     _wasde(datetime(2026, 11, 10, tzinfo=TZ)),
     _wasde(datetime(2026, 12, 10, tzinfo=TZ)),
 
-    # ── Саміт Трамп–Сі ──
     dict(
-        date         = datetime(2026, 5, 14, tzinfo=TZ),
-        morning_hour = 8,
-        icon         = "🌏",
-        name         = "Саміт Трамп–Сі (день 1)",
-        desc         = "Ключова геополітична подія для ринку сої.",
-        preview_time = "протягом дня",
-        release_time = None,
-        note         = "Стеж за новинами протягом дня",
-        direct       = "🫘 Soybean · Meal · Oil",
-        indirect     = "",
-        link         = LINKS["news"],
+        date=datetime(2026, 5, 14, tzinfo=TZ), morning_hour=8,
+        icon="🌏", name="Саміт Трамп–Сі (день 1)",
+        desc="Ключова геополітична подія для ринку сої.",
+        preview_time="протягом дня", release_time=None,
+        note="Стеж за новинами протягом дня",
+        direct="🫘 Soybean · Meal · Oil", indirect="", link=LINKS["news"],
     ),
     dict(
-        date         = datetime(2026, 5, 15, tzinfo=TZ),
-        morning_hour = 8,
-        icon         = "🌏",
-        name         = "Саміт Трамп–Сі (день 2)",
-        desc         = "Ключова геополітична подія для ринку сої.",
-        preview_time = "протягом дня",
-        release_time = None,
-        note         = "Стеж за підсумками переговорів",
-        direct       = "🫘 Soybean · Meal · Oil",
-        indirect     = "",
-        link         = LINKS["news"],
-    ),
-
-    # ── Grain Stocks + Acreage 30 червня ──
-    dict(
-        date         = datetime(2026, 6, 30, tzinfo=TZ),
-        morning_hour = 8,
-        icon         = "🌾",
-        name         = "USDA Grain Stocks",
-        desc         = "Квартальний звіт USDA про фактичні залишки зерна та олійних у сховищах США.",
-        preview_time = "17:00",
-        release_time = datetime(2026, 6, 30, 17, 0, tzinfo=TZ),
-        note         = "⚡️ Сьогодні також виходить Acreage Report!",
-        direct       = TICKERS["grain_stocks"]["direct"],
-        indirect     = TICKERS["grain_stocks"]["indirect"],
-        link         = LINKS["grain_stocks"],
+        date=datetime(2026, 5, 15, tzinfo=TZ), morning_hour=8,
+        icon="🌏", name="Саміт Трамп–Сі (день 2)",
+        desc="Ключова геополітична подія для ринку сої.",
+        preview_time="протягом дня", release_time=None,
+        note="Стеж за підсумками переговорів",
+        direct="🫘 Soybean · Meal · Oil", indirect="", link=LINKS["news"],
     ),
     dict(
-        date         = datetime(2026, 6, 30, tzinfo=TZ),
-        morning_hour = None,
-        icon         = "🌿",
-        name         = "USDA Acreage Report",
-        desc         = "Річний звіт USDA про засіяні площі. ⚡️ Другий великий шок року!",
-        preview_time = "17:00",
-        release_time = datetime(2026, 6, 30, 17, 5, tzinfo=TZ),
-        note         = "",
-        direct       = TICKERS["acreage"]["direct"],
-        indirect     = TICKERS["acreage"]["indirect"],
-        link         = LINKS["acreage"],
+        date=datetime(2026, 6, 30, tzinfo=TZ), morning_hour=8,
+        icon="🌾", name="USDA Grain Stocks",
+        desc="Квартальний звіт USDA про фактичні залишки зерна та олійних у сховищах США.",
+        preview_time="17:00", release_time=datetime(2026, 6, 30, 17, 0, tzinfo=TZ),
+        note="⚡️ Сьогодні також виходить Acreage Report!",
+        direct=TICKERS["grain_stocks"]["direct"], indirect=TICKERS["grain_stocks"]["indirect"],
+        link=LINKS["grain_stocks"],
     ),
-
-    # ── Grain Stocks 30 вересня ──
     dict(
-        date         = datetime(2026, 9, 30, tzinfo=TZ),
-        morning_hour = 8,
-        icon         = "🌾",
-        name         = "USDA Grain Stocks",
-        desc         = "Квартальний звіт USDA про фактичні залишки зерна та олійних у сховищах США.",
-        preview_time = "17:00",
-        release_time = datetime(2026, 9, 30, 17, 0, tzinfo=TZ),
-        note         = "",
-        direct       = TICKERS["grain_stocks"]["direct"],
-        indirect     = TICKERS["grain_stocks"]["indirect"],
-        link         = LINKS["grain_stocks"],
+        date=datetime(2026, 6, 30, tzinfo=TZ), morning_hour=None,
+        icon="🌿", name="USDA Acreage Report",
+        desc="Річний звіт USDA про засіяні площі. ⚡️ Другий великий шок року!",
+        preview_time="17:00", release_time=datetime(2026, 6, 30, 17, 5, tzinfo=TZ),
+        note="", direct=TICKERS["acreage"]["direct"], indirect=TICKERS["acreage"]["indirect"],
+        link=LINKS["acreage"],
+    ),
+    dict(
+        date=datetime(2026, 9, 30, tzinfo=TZ), morning_hour=8,
+        icon="🌾", name="USDA Grain Stocks",
+        desc="Квартальний звіт USDA про фактичні залишки зерна та олійних у сховищах США.",
+        preview_time="17:00", release_time=datetime(2026, 9, 30, 17, 0, tzinfo=TZ),
+        note="", direct=TICKERS["grain_stocks"]["direct"], indirect=TICKERS["grain_stocks"]["indirect"],
+        link=LINKS["grain_stocks"],
     ),
 ]
 
@@ -279,87 +293,21 @@ async def weekly_preview():
     await send("\n".join(lines))
 
 # ─────────────────────────────────────────
-#  Crop Progress (квітень–листопад)
-# ─────────────────────────────────────────
-
-async def crop_progress_morning():
-    if 4 <= datetime.now(TZ).month <= 11:
-        t = TICKERS["crop_progress"]
-        await send(msg_reminder(
-            "🌱", "USDA Crop Progress", "22:00",
-            desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
-            direct=t["direct"], indirect=t["indirect"],
-            link=LINKS["crop"],
-        ))
-
-async def crop_progress_release():
-    if 4 <= datetime.now(TZ).month <= 11:
-        t = TICKERS["crop_progress"]
-        await send(msg_release(
-            "🌱", "USDA Crop Progress", "22:00",
-            desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
-            direct=t["direct"], indirect=t["indirect"],
-            link=LINKS["crop"],
-        ))
-
-# ─────────────────────────────────────────
 #  Планувальник
 # ─────────────────────────────────────────
 
 def schedule_all():
     now = datetime.now(TZ)
 
-    scheduler.add_job(weekly_preview, "cron", day_of_week="sat", hour=8, minute=0)
-    scheduler.add_job(crop_progress_morning, "cron", day_of_week="mon", hour=8,  minute=0)
-    scheduler.add_job(crop_progress_release, "cron", day_of_week="mon", hour=22, minute=0)
-
-    # ── Середа: EIA ──
-    t = TICKERS["eia"]
-    scheduler.add_job(send, "cron", day_of_week="wed", hour=8, minute=0, args=[
-        msg_reminder("🛢", "EIA Petroleum Status Report", "16:30",
-                     desc="Тижневі запаси нафти/газу від Energy Information Administration.",
-                     direct=t["direct"], indirect=t["indirect"],
-                     note="Нафта → попит на biodiesel → соєва олія → ZM",
-                     link=LINKS["eia"])
-    ])
-    scheduler.add_job(send, "cron", day_of_week="wed", hour=16, minute=30, args=[
-        msg_release("🛢", "EIA Petroleum Status Report", "16:30",
-                    desc="Тижневі запаси нафти/газу від Energy Information Administration.",
-                    direct=t["direct"], indirect=t["indirect"],
-                    link=LINKS["eia"])
-    ])
-
-    # ── Четвер: Export Sales ──
-    t = TICKERS["export_sales"]
-    scheduler.add_job(send, "cron", day_of_week="thu", hour=8, minute=0, args=[
-        msg_reminder("📊", "USDA Export Sales", "14:30",
-                     desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
-                     direct=t["direct"], indirect=t["indirect"],
-                     link=LINKS["export_sales"])
-    ])
-    scheduler.add_job(send, "cron", day_of_week="thu", hour=14, minute=30, args=[
-        msg_release("📊", "USDA Export Sales", "14:30",
-                    desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
-                    direct=t["direct"], indirect=t["indirect"],
-                    link=LINKS["export_sales"])
-    ])
-
-    # ── П'ятниця: COT ──
-    t = TICKERS["cot"]
-    scheduler.add_job(send, "cron", day_of_week="fri", hour=8, minute=0, args=[
-        msg_reminder("📈", "COT Report (CFTC)", "21:30",
-                     desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.",
-                     direct=t["direct"],
-                     note="Дані фіксуються у вівторок, публікуються в п'ятницю",
-                     link=LINKS["cot"])
-    ])
-    scheduler.add_job(send, "cron", day_of_week="fri", hour=21, minute=30, args=[
-        msg_release("📈", "COT Report (CFTC)", "21:30",
-                    desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.\n"
-                         "Дані фіксуються у вівторок, публікуються в п'ятницю.",
-                    direct=t["direct"],
-                    link=LINKS["cot"])
-    ])
+    scheduler.add_job(weekly_preview,    "cron", day_of_week="sat", hour=8,  minute=0)
+    scheduler.add_job(job_crop_morning,  "cron", day_of_week="mon", hour=8,  minute=0)
+    scheduler.add_job(job_crop_release,  "cron", day_of_week="mon", hour=22, minute=0)
+    scheduler.add_job(job_eia_morning,   "cron", day_of_week="wed", hour=8,  minute=0)
+    scheduler.add_job(job_eia_release,   "cron", day_of_week="wed", hour=16, minute=30)
+    scheduler.add_job(job_export_morning,"cron", day_of_week="thu", hour=8,  minute=0)
+    scheduler.add_job(job_export_release,"cron", day_of_week="thu", hour=14, minute=30)
+    scheduler.add_job(job_cot_morning,   "cron", day_of_week="fri", hour=8,  minute=0)
+    scheduler.add_job(job_cot_release,   "cron", day_of_week="fri", hour=21, minute=30)
 
     # ── Разові події ──
     added, skipped = 0, 0
@@ -367,13 +315,11 @@ def schedule_all():
         if ev["morning_hour"] is not None:
             dt_m = ev["date"].replace(hour=ev["morning_hour"], minute=0, second=0)
             if dt_m > now:
-                time_for_reminder = ev["preview_time"] if ":" in ev["preview_time"] else ""
                 scheduler.add_job(send, "date", run_date=dt_m, args=[
-                    msg_reminder(ev["icon"], ev["name"], time_for_reminder,
-                                 desc=ev.get("desc", ""),
-                                 direct=ev.get("direct", ""),
-                                 indirect=ev.get("indirect", ""),
-                                 note=ev.get("note", ""),
+                    msg_reminder(ev["icon"], ev["name"],
+                                 ev["preview_time"] if ":" in ev["preview_time"] else "",
+                                 desc=ev.get("desc", ""), direct=ev.get("direct", ""),
+                                 indirect=ev.get("indirect", ""), note=ev.get("note", ""),
                                  link=ev.get("link", ""))
                 ])
                 added += 1
@@ -384,10 +330,8 @@ def schedule_all():
         if dt_r and dt_r > now:
             scheduler.add_job(send, "date", run_date=dt_r, args=[
                 msg_release(ev["icon"], ev["name"], ev["preview_time"],
-                            desc=ev.get("desc", ""),
-                            direct=ev.get("direct", ""),
-                            indirect=ev.get("indirect", ""),
-                            link=ev.get("link", ""))
+                            desc=ev.get("desc", ""), direct=ev.get("direct", ""),
+                            indirect=ev.get("indirect", ""), link=ev.get("link", ""))
             ])
             added += 1
 

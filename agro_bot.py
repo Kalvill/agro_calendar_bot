@@ -27,6 +27,7 @@ LINKS = {
     "grain_stocks": "https://www.nass.usda.gov/Publications/Todays_Reports/",
     "acreage":      "https://www.nass.usda.gov/Publications/Todays_Reports/",
     "news":         "https://www.financialjuice.com/home",
+    "oilseeds": "https://apps.fas.usda.gov/psdonline/circulars/oilseeds.pdf",
 }
 
 TICKERS = {
@@ -187,15 +188,39 @@ def _wasde(dt: datetime, note: str = "") -> dict:
         link         = LINKS["wasde"],
     )
 
+def _oilseeds(dt: datetime) -> dict:
+    return dict(
+        date         = dt,
+        morning_hour = 8,
+        icon         = "🫘",
+        name         = "USDA Oilseeds: World Markets & Trade",
+        desc         = "Щомісячний звіт FAS USDA про світовий баланс олійних культур.",
+        preview_time = "18:15",
+        release_time = dt.replace(hour=18, minute=15, second=0),
+        note         = "Виходить одночасно з WASDE",
+        direct       = "🫘 Soybean · Meal · Oil · 🌿 Cotton · 🌴 Palm Oil",
+        indirect     = "🌾 Wheat · ☕ Coffee",
+        link         = LINKS["oilseeds"],
+    )
+
+
 ONE_TIME = [
     _wasde(datetime(2026, 5, 12, tzinfo=TZ), note="🔥 Перший прогноз нового сезону 2026/27 — НАЙВАЖЛИВІШИЙ!"),
+    _oilseeds(datetime(2026, 5, 12, tzinfo=TZ)),
     _wasde(datetime(2026, 6, 11, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 6, 11, tzinfo=TZ)),
     _wasde(datetime(2026, 7, 10, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 7, 10, tzinfo=TZ)),
     _wasde(datetime(2026, 8, 12, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 8, 12, tzinfo=TZ)),
     _wasde(datetime(2026, 9, 11, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 9, 11, tzinfo=TZ)),
     _wasde(datetime(2026, 10, 9, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 10, 9, tzinfo=TZ)),
     _wasde(datetime(2026, 11, 10, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 11, 10, tzinfo=TZ)),
     _wasde(datetime(2026, 12, 10, tzinfo=TZ)),
+    _oilseeds(datetime(2026, 12, 10, tzinfo=TZ)),
 
     dict(
         date=datetime(2026, 5, 14, tzinfo=TZ), morning_hour=8,

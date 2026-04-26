@@ -388,6 +388,8 @@ async def main():
         "<b>USDA WASDE 2026</b> (8:00 + 18:00)\n"
         f"⚠️ <a href=\"{LINKS['wasde']}\">12 трав · 11 черв · 10 лип · 12 серп\n"
         "   11 вер · 9 жовт · 10 лист · 10 груд</a>\n\n"
+        f"🫘 <a href=\"{LINKS['oilseeds']}\">USDA Oilseeds: World Markets & Trade</a> (8:00 + 18:15)\n"
+        "Виходить в ті ж дати що й WASDE\n\n"
         "<b>Інші разові події</b>\n"
         f"🌏 14 трав 8:00 — <a href=\"{LINKS['news']}\">Саміт Трамп–Сі (день 1)</a>\n"
         f"🌏 15 трав 8:00 — <a href=\"{LINKS['news']}\">Саміт Трамп–Сі (день 2)</a>\n"

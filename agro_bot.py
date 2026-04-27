@@ -2,7 +2,8 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 import pytz
-from telegram import Bot
+from telegram import Bot, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # ========== НАЛАШТУВАННЯ ==========
@@ -11,7 +12,6 @@ CHAT_ID   = os.environ.get("CHAT_ID", "341010427")
 TZ        = pytz.timezone("Europe/Warsaw")
 # ==================================
 
-bot       = Bot(token=BOT_TOKEN)
 scheduler = AsyncIOScheduler(timezone=TZ)
 
 WEEKDAYS_UK = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
@@ -27,7 +27,7 @@ LINKS = {
     "grain_stocks": "https://www.nass.usda.gov/Publications/Todays_Reports/",
     "acreage":      "https://www.nass.usda.gov/Publications/Todays_Reports/",
     "news":         "https://www.financialjuice.com/home",
-    "oilseeds": "https://apps.fas.usda.gov/psdonline/circulars/oilseeds.pdf",
+    "oilseeds":     "https://apps.fas.usda.gov/psdonline/circulars/oilseeds.pdf",
 }
 
 TICKERS = {
@@ -65,9 +65,13 @@ TICKERS = {
 #  Базова функція відправки
 # ─────────────────────────────────────────
 
-async def send(text: str):
-    await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="HTML",
-                           disable_web_page_preview=True)
+async def send(bot: Bot, text: str, chat_id: str = None):
+    await bot.send_message(
+        chat_id=chat_id or CHAT_ID,
+        text=text,
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
 # ─────────────────────────────────────────
 #  Форматери повідомлень
@@ -76,9 +80,7 @@ async def send(text: str):
 def a(text: str, url: str) -> str:
     return f'<a href="{url}">{text}</a>' if url else text
 
-def msg_reminder(icon: str, name: str, time_str: str = "", desc: str = "",
-                 direct: str = "", indirect: str = "", note: str = "",
-                 link: str = "") -> str:
+def msg_reminder(icon, name, time_str="", desc="", direct="", indirect="", note="", link="") -> str:
     now      = datetime.now(TZ)
     date_str = f"{WEEKDAYS_UK[now.weekday()]}, {now.day:02d}.{now.month:02d}.{now.year}"
     parts = [f"🔔 <b>{date_str} · Нагадування</b>", ""]
@@ -95,8 +97,7 @@ def msg_reminder(icon: str, name: str, time_str: str = "", desc: str = "",
         parts.append(f"🟡 {indirect}")
     return "\n".join(parts)
 
-def msg_release(icon: str, name: str, time_str: str, desc: str = "",
-                direct: str = "", indirect: str = "", link: str = "") -> str:
+def msg_release(icon, name, time_str, desc="", direct="", indirect="", link="") -> str:
     now      = datetime.now(TZ)
     date_str = f"{now.day:02d}.{now.month:02d}.{now.year}"
     parts = [f"{icon} · <b>{a(name, link)}</b> ·"]
@@ -110,99 +111,27 @@ def msg_release(icon: str, name: str, time_str: str, desc: str = "",
     return "\n".join(parts)
 
 # ─────────────────────────────────────────
-#  Обгортки для кронів (генерують текст у момент відправки)
-# ─────────────────────────────────────────
-
-async def job_crop_morning():
-    if 4 <= datetime.now(TZ).month <= 11:
-        t = TICKERS["crop_progress"]
-        await send(msg_reminder("🌱", "USDA Crop Progress", "22:00",
-                                desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
-                                direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
-
-async def job_crop_release():
-    if 4 <= datetime.now(TZ).month <= 11:
-        t = TICKERS["crop_progress"]
-        await send(msg_release("🌱", "USDA Crop Progress", "22:00",
-                               desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
-                               direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
-
-async def job_eia_morning():
-    t = TICKERS["eia"]
-    await send(msg_reminder("🛢", "EIA Petroleum Status Report", "16:30",
-                            desc="Тижневі запаси нафти/газу від Energy Information Administration.",
-                            direct=t["direct"], indirect=t["indirect"],
-                            note="Нафта → попит на biodiesel → соєва олія → ZM",
-                            link=LINKS["eia"]))
-
-async def job_eia_release():
-    t = TICKERS["eia"]
-    await send(msg_release("🛢", "EIA Petroleum Status Report", "16:30",
-                           desc="Тижневі запаси нафти/газу від Energy Information Administration.",
-                           direct=t["direct"], indirect=t["indirect"], link=LINKS["eia"]))
-
-async def job_export_morning():
-    t = TICKERS["export_sales"]
-    await send(msg_reminder("📊", "USDA Export Sales", "14:30",
-                            desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
-                            direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
-
-async def job_export_release():
-    t = TICKERS["export_sales"]
-    await send(msg_release("📊", "USDA Export Sales", "14:30",
-                           desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
-                           direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
-
-async def job_cot_morning():
-    t = TICKERS["cot"]
-    await send(msg_reminder("📈", "COT Report (CFTC)", "21:30",
-                            desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.",
-                            direct=t["direct"],
-                            note="Дані фіксуються у вівторок, публікуються в п'ятницю",
-                            link=LINKS["cot"]))
-
-async def job_cot_release():
-    t = TICKERS["cot"]
-    await send(msg_release("📈", "COT Report (CFTC)", "21:30",
-                           desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.\n"
-                                "Дані фіксуються у вівторок, публікуються в п'ятницю.",
-                           direct=t["direct"], link=LINKS["cot"]))
-
-# ─────────────────────────────────────────
-#  Структура разових подій
+#  Разові події
 # ─────────────────────────────────────────
 
 def _wasde(dt: datetime, note: str = "") -> dict:
     t = TICKERS["wasde"]
     return dict(
-        date         = dt,
-        morning_hour = 8,
-        icon         = "⚠️",
-        name         = "USDA WASDE",
-        desc         = "Найважливіший місячний звіт: світовий баланс попиту/пропозиції по всіх агрокультурах.",
-        preview_time = "18:00",
-        release_time = dt.replace(hour=18, minute=0, second=0),
-        note         = note,
-        direct       = t["direct"],
-        indirect     = t["indirect"],
-        link         = LINKS["wasde"],
+        date=dt, morning_hour=8, icon="⚠️", name="USDA WASDE",
+        desc="Найважливіший місячний звіт: світовий баланс попиту/пропозиції по всіх агрокультурах.",
+        preview_time="18:00", release_time=dt.replace(hour=18, minute=0, second=0),
+        note=note, direct=t["direct"], indirect=t["indirect"], link=LINKS["wasde"],
     )
 
 def _oilseeds(dt: datetime) -> dict:
     return dict(
-        date         = dt,
-        morning_hour = 8,
-        icon         = "🫘",
-        name         = "USDA Oilseeds: World Markets & Trade",
-        desc         = "Щомісячний звіт FAS USDA про світовий баланс олійних культур.",
-        preview_time = "18:15",
-        release_time = dt.replace(hour=18, minute=15, second=0),
-        note         = "Виходить одночасно з WASDE",
-        direct       = "🫘 Soybean · Meal · Oil · 🌿 Cotton · 🌴 Palm Oil",
-        indirect     = "🌾 Wheat · ☕ Coffee",
-        link         = LINKS["oilseeds"],
+        date=dt, morning_hour=8, icon="🫘", name="USDA Oilseeds: World Markets & Trade",
+        desc="Щомісячний звіт FAS USDA про світовий баланс олійних культур.",
+        preview_time="18:15", release_time=dt.replace(hour=18, minute=15, second=0),
+        note="Виходить одночасно з WASDE",
+        direct="🫘 Soybean · Meal · Oil · 🌿 Cotton · 🌴 Palm Oil",
+        indirect="🌾 Wheat · ☕ Coffee", link=LINKS["oilseeds"],
     )
-
 
 ONE_TIME = [
     _wasde(datetime(2026, 5, 12, tzinfo=TZ), note="🔥 Перший прогноз нового сезону 2026/27 — НАЙВАЖЛИВІШИЙ!"),
@@ -221,7 +150,6 @@ ONE_TIME = [
     _oilseeds(datetime(2026, 11, 10, tzinfo=TZ)),
     _wasde(datetime(2026, 12, 10, tzinfo=TZ)),
     _oilseeds(datetime(2026, 12, 10, tzinfo=TZ)),
-
     dict(
         date=datetime(2026, 5, 14, tzinfo=TZ), morning_hour=8,
         icon="🌏", name="Саміт Трамп–Сі (день 1)",
@@ -266,10 +194,10 @@ ONE_TIME = [
 ]
 
 # ─────────────────────────────────────────
-#  Щотижневий огляд (субота 8:00)
+#  Щотижневий огляд
 # ─────────────────────────────────────────
 
-async def weekly_preview():
+async def weekly_preview(bot: Bot, chat_id: str = None):
     now = datetime.now(TZ)
     days_to_mon = (7 - now.weekday()) % 7
     if days_to_mon == 0:
@@ -304,7 +232,7 @@ async def weekly_preview():
               f"──────────────────────")
 
     if not day_map:
-        await send(header + "\n\nЦього тижня запланованих подій немає.")
+        await send(bot, header + "\n\nЦього тижня запланованих подій немає.", chat_id)
         return
 
     lines = [header]
@@ -315,49 +243,303 @@ async def weekly_preview():
         lines.append(f"\n<b>{WEEKDAYS_UK[day.weekday()]}, {day.day:02d}.{day.month:02d}</b>")
         for time_str, icon, name, url in lst:
             lines.append(f"  {icon} {time_str} — {a(name, url)}")
-    await send("\n".join(lines))
+    await send(bot, "\n".join(lines), chat_id)
+
+# ─────────────────────────────────────────
+#  Крон-задачі (обгортки для scheduler)
+# ─────────────────────────────────────────
+
+def make_cron_jobs(bot: Bot):
+    async def job_crop_morning():
+        if 4 <= datetime.now(TZ).month <= 11:
+            t = TICKERS["crop_progress"]
+            await send(bot, msg_reminder("🌱", "USDA Crop Progress", "22:00",
+                desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
+                direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
+
+    async def job_crop_release():
+        if 4 <= datetime.now(TZ).month <= 11:
+            t = TICKERS["crop_progress"]
+            await send(bot, msg_release("🌱", "USDA Crop Progress", "22:00",
+                desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
+                direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
+
+    async def job_eia_morning():
+        t = TICKERS["eia"]
+        await send(bot, msg_reminder("🛢", "EIA Petroleum Status Report", "16:30",
+            desc="Тижневі запаси нафти/газу від Energy Information Administration.",
+            direct=t["direct"], indirect=t["indirect"],
+            note="Нафта → попит на biodiesel → соєва олія → ZM", link=LINKS["eia"]))
+
+    async def job_eia_release():
+        t = TICKERS["eia"]
+        await send(bot, msg_release("🛢", "EIA Petroleum Status Report", "16:30",
+            desc="Тижневі запаси нафти/газу від Energy Information Administration.",
+            direct=t["direct"], indirect=t["indirect"], link=LINKS["eia"]))
+
+    async def job_export_morning():
+        t = TICKERS["export_sales"]
+        await send(bot, msg_reminder("📊", "USDA Export Sales", "14:30",
+            desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
+            direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
+
+    async def job_export_release():
+        t = TICKERS["export_sales"]
+        await send(bot, msg_release("📊", "USDA Export Sales", "14:30",
+            desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
+            direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
+
+    async def job_cot_morning():
+        t = TICKERS["cot"]
+        await send(bot, msg_reminder("📈", "COT Report (CFTC)", "21:30",
+            desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.",
+            direct=t["direct"],
+            note="Дані фіксуються у вівторок, публікуються в п'ятницю", link=LINKS["cot"]))
+
+    async def job_cot_release():
+        t = TICKERS["cot"]
+        await send(bot, msg_release("📈", "COT Report (CFTC)", "21:30",
+            desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.\n"
+                 "Дані фіксуються у вівторок, публікуються в п'ятницю.",
+            direct=t["direct"], link=LINKS["cot"]))
+
+    async def job_weekly():
+        await weekly_preview(bot)
+
+    return (job_crop_morning, job_crop_release, job_eia_morning, job_eia_release,
+            job_export_morning, job_export_release, job_cot_morning, job_cot_release,
+            job_weekly)
+
+# ─────────────────────────────────────────
+#  ════════ КОМАНДИ МЕНЮ ════════
+# ─────────────────────────────────────────
+
+async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """📋 Зведення подій на сьогодні"""
+    now = datetime.now(TZ)
+    lines = [f"📋 <b>Події на сьогодні</b>  {WEEKDAYS_UK[now.weekday()]}, {now.day:02d}.{now.month:02d}.{now.year}",
+             "──────────────────────"]
+    found = False
+
+    wd, m = now.weekday(), now.month
+    if wd == 0 and 4 <= m <= 11:
+        lines.append(f"🌱 22:00 — {a('USDA Crop Progress', LINKS['crop'])}")
+        found = True
+    if wd == 2:
+        lines.append(f"🛢 16:30 — {a('EIA Petroleum Status Report', LINKS['eia'])}")
+        found = True
+    if wd == 3:
+        lines.append(f"📊 14:30 — {a('USDA Export Sales', LINKS['export_sales'])}")
+        found = True
+    if wd == 4:
+        lines.append(f"📈 21:30 — {a('COT Report (CFTC)', LINKS['cot'])}")
+        found = True
+    for ev in ONE_TIME:
+        if ev["date"].date() == now.date():
+            lines.append(f"{ev['icon']} {ev['preview_time']} — {a(ev['name'], ev.get('link',''))}")
+            found = True
+
+    if not found:
+        lines.append("Сьогодні запланованих звітів немає.")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML",
+                                    disable_web_page_preview=True)
+
+async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """📅 Розклад на наступний тиждень"""
+    await weekly_preview(context.bot, str(update.effective_chat.id))
+
+async def cmd_actuals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """⚡️ Активні нагадування"""
+    now = datetime.now(TZ)
+    upcoming = []
+    for ev in ONE_TIME:
+        if ev["date"] >= now.replace(hour=0, minute=0, second=0, microsecond=0):
+            upcoming.append(ev)
+
+    upcoming.sort(key=lambda x: x["date"])
+    lines = ["⚡️ <b>Активні разові події</b>", "──────────────────────"]
+    for ev in upcoming[:10]:
+        d = ev["date"]
+        lines.append(f"{ev['icon']} <b>{d.day:02d}.{d.month:02d}</b> {ev['preview_time']} — "
+                     f"{a(ev['name'], ev.get('link',''))}")
+        if ev.get("note"):
+            lines.append(f"   💬 {ev['note']}")
+
+    if len(upcoming) > 10:
+        lines.append(f"\n...і ще {len(upcoming)-10} подій")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML",
+                                    disable_web_page_preview=True)
+
+async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """📊 Всі регулярні звіти"""
+    text = (
+        "📊 <b>Регулярні звіти</b>\n"
+        "──────────────────────\n"
+        f"🌱 <b>USDA Crop Progress</b> — {a('посилання', LINKS['crop'])}\n"
+        "   Щопонеділка 22:00 (квіт–листоп)\n"
+        f"   🟢 {TICKERS['crop_progress']['direct']}\n\n"
+        f"🛢 <b>EIA Petroleum Status</b> — {a('посилання', LINKS['eia'])}\n"
+        "   Щосереди 16:30\n"
+        f"   🟢 {TICKERS['eia']['direct']}\n\n"
+        f"📊 <b>USDA Export Sales</b> — {a('посилання', LINKS['export_sales'])}\n"
+        "   Щочетверга 14:30\n"
+        f"   🟢 {TICKERS['export_sales']['direct']}\n\n"
+        f"📈 <b>COT Report (CFTC)</b> — {a('посилання', LINKS['cot'])}\n"
+        "   Щоп'ятниці 21:30\n"
+        f"   🟢 {TICKERS['cot']['direct']}\n\n"
+        f"⚠️ <b>USDA WASDE</b> — {a('посилання', LINKS['wasde'])}\n"
+        "   Щомісяця, ~12-е число, 18:00\n"
+        f"   🟢 {TICKERS['wasde']['direct']}\n\n"
+        f"🫘 <b>USDA Oilseeds</b> — {a('посилання', LINKS['oilseeds'])}\n"
+        "   Одночасно з WASDE, 18:15"
+    )
+    await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """⚙️ Налаштування бота"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🌍 UTC+0  London",        callback_data="tz_UTC+0"),
+        ],
+        [
+            InlineKeyboardButton("🇵🇱 UTC+1  Warsaw/Paris", callback_data="tz_UTC+1"),
+            InlineKeyboardButton("🇺🇦 UTC+2  Kyiv",         callback_data="tz_UTC+2"),
+        ],
+        [
+            InlineKeyboardButton("🇷🇺 UTC+3  Moscow",       callback_data="tz_UTC+3"),
+            InlineKeyboardButton("🇺🇸 UTC-5  New York",     callback_data="tz_UTC-5"),
+        ],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Показати поточний часовий пояс
+    current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
+    now_local = datetime.now(pytz.timezone(current_tz))
+    text = (
+        "⚙️ <b>Налаштування</b>\n"
+        "──────────────────────\n"
+        f"🕐 Поточний часовий пояс: <b>{current_tz}</b>\n"
+        f"🕐 Місцевий час зараз: <b>{now_local.strftime('%H:%M')}</b>\n\n"
+        "Оберіть ваш часовий пояс:"
+    )
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """❓ Допомога по командах"""
+    text = (
+        "ℹ️ <b>Допомога по командах</b>\n"
+        "──────────────────────\n"
+        "📋 /daily — події на сьогодні\n"
+        "📅 /week — розклад на наступний тиждень\n"
+        "⚡️ /actuals — активні разові події\n"
+        "📊 /reports — всі регулярні звіти з описом\n"
+        "⚙️ /settings — налаштування (часовий пояс)\n"
+        "❓ /help — ця підказка\n\n"
+        "<i>Бот автоматично надсилає нагадування о 8:00 перед кожним звітом "
+        "та повідомлення в момент виходу звіту.</i>"
+    )
+    await update.message.reply_text(text, parse_mode="HTML")
+
+# ─────────────────────────────────────────
+#  Обробка вибору часового поясу
+# ─────────────────────────────────────────
+
+TZ_MAP = {
+    "tz_UTC+0": ("UTC",              "🌍 UTC+0 — London, Lisbon"),
+    "tz_UTC+1": ("Europe/Warsaw",    "🇵🇱 UTC+1 — Warsaw, Paris, Berlin"),
+    "tz_UTC+2": ("Europe/Kyiv",      "🇺🇦 UTC+2 — Kyiv, Helsinki"),
+    "tz_UTC+3": ("Europe/Moscow",    "🇷🇺 UTC+3 — Moscow, Istanbul"),
+    "tz_UTC-5": ("America/New_York", "🇺🇸 UTC-5 — New York, Toronto"),
+}
+
+async def handle_timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data not in TZ_MAP:
+        return
+
+    tz_name, tz_label = TZ_MAP[data]
+    context.bot_data["timezone"] = tz_name
+
+    now_local = datetime.now(pytz.timezone(tz_name))
+    await query.edit_message_text(
+        f"✅ <b>Часовий пояс встановлено</b>\n"
+        f"──────────────────────\n"
+        f"{tz_label}\n"
+        f"🕐 Поточний час: <b>{now_local.strftime('%H:%M')}</b>\n\n"
+        f"<i>⚠️ Примітка: зміна часового поясу впливає лише на відображення. "
+        f"Розклад нагадувань зберігається за Europe/Warsaw (UTC+1/+2).</i>",
+        parse_mode="HTML"
+    )
+
+# ─────────────────────────────────────────
+#  Реєстрація команд у меню Telegram
+# ─────────────────────────────────────────
+
+async def set_bot_commands(bot: Bot):
+    commands = [
+        BotCommand("daily",   "📋 Зведення подій на сьогодні"),
+        BotCommand("week",    "📅 Розклад на наступний тиждень"),
+        BotCommand("actuals", "⚡️ Активні разові події"),
+        BotCommand("reports", "📊 Всі регулярні звіти"),
+        BotCommand("settings","⚙️ Налаштування"),
+        BotCommand("help",    "❓ Допомога"),
+    ]
+    await bot.set_my_commands(commands)
+    print("✅ Команди меню зареєстровано")
 
 # ─────────────────────────────────────────
 #  Планувальник
 # ─────────────────────────────────────────
 
-def schedule_all():
+def schedule_all(bot: Bot):
     now = datetime.now(TZ)
+    (crop_m, crop_r, eia_m, eia_r,
+     exp_m, exp_r, cot_m, cot_r, weekly) = make_cron_jobs(bot)
 
-    scheduler.add_job(weekly_preview,    "cron", day_of_week="sat", hour=8,  minute=0)
-    scheduler.add_job(job_crop_morning,  "cron", day_of_week="mon", hour=8,  minute=0)
-    scheduler.add_job(job_crop_release,  "cron", day_of_week="mon", hour=22, minute=0)
-    scheduler.add_job(job_eia_morning,   "cron", day_of_week="wed", hour=8,  minute=0)
-    scheduler.add_job(job_eia_release,   "cron", day_of_week="wed", hour=16, minute=30)
-    scheduler.add_job(job_export_morning,"cron", day_of_week="thu", hour=8,  minute=0)
-    scheduler.add_job(job_export_release,"cron", day_of_week="thu", hour=14, minute=30)
-    scheduler.add_job(job_cot_morning,   "cron", day_of_week="fri", hour=8,  minute=0)
-    scheduler.add_job(job_cot_release,   "cron", day_of_week="fri", hour=21, minute=30)
+    scheduler.add_job(weekly,  "cron", day_of_week="sat", hour=8,  minute=0)
+    scheduler.add_job(crop_m,  "cron", day_of_week="mon", hour=8,  minute=0)
+    scheduler.add_job(crop_r,  "cron", day_of_week="mon", hour=22, minute=0)
+    scheduler.add_job(eia_m,   "cron", day_of_week="wed", hour=8,  minute=0)
+    scheduler.add_job(eia_r,   "cron", day_of_week="wed", hour=16, minute=30)
+    scheduler.add_job(exp_m,   "cron", day_of_week="thu", hour=8,  minute=0)
+    scheduler.add_job(exp_r,   "cron", day_of_week="thu", hour=14, minute=30)
+    scheduler.add_job(cot_m,   "cron", day_of_week="fri", hour=8,  minute=0)
+    scheduler.add_job(cot_r,   "cron", day_of_week="fri", hour=21, minute=30)
 
-    # ── Разові події ──
     added, skipped = 0, 0
     for ev in ONE_TIME:
         if ev["morning_hour"] is not None:
             dt_m = ev["date"].replace(hour=ev["morning_hour"], minute=0, second=0)
             if dt_m > now:
-                scheduler.add_job(send, "date", run_date=dt_m, args=[
-                    msg_reminder(ev["icon"], ev["name"],
-                                 ev["preview_time"] if ":" in ev["preview_time"] else "",
-                                 desc=ev.get("desc", ""), direct=ev.get("direct", ""),
-                                 indirect=ev.get("indirect", ""), note=ev.get("note", ""),
-                                 link=ev.get("link", ""))
-                ])
+                scheduler.add_job(
+                    lambda e=ev: send(bot, msg_reminder(
+                        e["icon"], e["name"],
+                        e["preview_time"] if ":" in e["preview_time"] else "",
+                        desc=e.get("desc",""), direct=e.get("direct",""),
+                        indirect=e.get("indirect",""), note=e.get("note",""),
+                        link=e.get("link","")
+                    )),
+                    "date", run_date=dt_m
+                )
                 added += 1
             else:
                 skipped += 1
 
         dt_r = ev.get("release_time")
         if dt_r and dt_r > now:
-            scheduler.add_job(send, "date", run_date=dt_r, args=[
-                msg_release(ev["icon"], ev["name"], ev["preview_time"],
-                            desc=ev.get("desc", ""), direct=ev.get("direct", ""),
-                            indirect=ev.get("indirect", ""), link=ev.get("link", ""))
-            ])
+            scheduler.add_job(
+                lambda e=ev: send(bot, msg_release(
+                    e["icon"], e["name"], e["preview_time"],
+                    desc=e.get("desc",""), direct=e.get("direct",""),
+                    indirect=e.get("indirect",""), link=e.get("link","")
+                )),
+                "date", run_date=dt_r
+            )
             added += 1
 
     print(f"  Разові події: додано {added}, пропущено як минулі {skipped}")
@@ -366,40 +548,57 @@ def schedule_all():
 #  Запуск
 # ─────────────────────────────────────────
 
-async def main():
-    if not BOT_TOKEN:
-        print("❌ BOT_TOKEN не задано!")
-        return
-
-    print("🚀 Запуск Agro Calendar Bot...")
-    schedule_all()
+async def post_init(application: Application):
+    """Викликається після ініціалізації application"""
+    bot = application.bot
+    await set_bot_commands(bot)
+    schedule_all(bot)
     scheduler.start()
-    print("✅ Бот запущено! Зупинити: Ctrl+C")
 
-    await send(
+    await send(bot,
         "🤖 <b>Agro Calendar Bot</b> — запущено ✅\n"
+        "──────────────────────\n"
+        "Використовуй меню або команди:\n"
+        "📋 /daily · 📅 /week · ⚡️ /actuals\n"
+        "📊 /reports · ⚙️ /settings · ❓ /help\n"
         "──────────────────────\n"
         "<b>Щотижнево</b>\n"
         "📅 Сб 8:00 — огляд наступного тижня\n"
         f"🌱 Пн 8:00 + 22:00 — <a href=\"{LINKS['crop']}\">Crop Progress</a> (квіт–листоп)\n"
         f"🛢 Ср 8:00 + 16:30 — <a href=\"{LINKS['eia']}\">EIA Petroleum Status Report</a>\n"
         f"📊 Чт 8:00 + 14:30 — <a href=\"{LINKS['export_sales']}\">USDA Export Sales</a>\n"
-        f"📈 Пт 8:00 + 21:30 — <a href=\"{LINKS['cot']}\">COT Report (CFTC)</a>\n\n"
-        "<b>USDA WASDE 2026</b> (8:00 + 18:00)\n"
-        f"⚠️ <a href=\"{LINKS['wasde']}\">12 трав · 11 черв · 10 лип · 12 серп\n"
-        "   11 вер · 9 жовт · 10 лист · 10 груд</a>\n\n"
-        f"🫘 <a href=\"{LINKS['oilseeds']}\">USDA Oilseeds: World Markets & Trade</a> (8:00 + 18:15)\n"
-        "Виходить в ті ж дати що й WASDE\n\n"
-        "<b>Інші разові події</b>\n"
-        f"🌏 14 трав 8:00 — <a href=\"{LINKS['news']}\">Саміт Трамп–Сі (день 1)</a>\n"
-        f"🌏 15 трав 8:00 — <a href=\"{LINKS['news']}\">Саміт Трамп–Сі (день 2)</a>\n"
-        f"🌾 30 черв 17:00 — <a href=\"{LINKS['grain_stocks']}\">Grain Stocks</a> + <a href=\"{LINKS['acreage']}\">Acreage</a>\n"
-        f"🌾 30 вер 17:00 — <a href=\"{LINKS['grain_stocks']}\">Grain Stocks</a>"
+        f"📈 Пт 8:00 + 21:30 — <a href=\"{LINKS['cot']}\">COT Report (CFTC)</a>"
     )
 
-    while True:
-        await asyncio.sleep(60)
+
+def main():
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN не задано!")
+        return
+
+    print("🚀 Запуск Agro Calendar Bot...")
+
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+
+    # ── Реєстрація обробників команд ──
+    app.add_handler(CommandHandler("daily",    cmd_daily))
+    app.add_handler(CommandHandler("week",     cmd_week))
+    app.add_handler(CommandHandler("actuals",  cmd_actuals))
+    app.add_handler(CommandHandler("reports",  cmd_reports))
+    app.add_handler(CommandHandler("settings", cmd_settings))
+    app.add_handler(CommandHandler("help",     cmd_help))
+
+    # ── Обробник кнопок (часовий пояс) ──
+    app.add_handler(CallbackQueryHandler(handle_timezone_callback, pattern="^tz_"))
+
+    print("✅ Бот запущено! Зупинити: Ctrl+C")
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

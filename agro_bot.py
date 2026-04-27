@@ -197,12 +197,23 @@ ONE_TIME = [
 #  Щотижневий огляд
 # ─────────────────────────────────────────
 
-async def weekly_preview(bot: Bot, chat_id: str = None):
-    now = datetime.now(TZ)
-    days_to_mon = (7 - now.weekday()) % 7
-    if days_to_mon == 0:
-        days_to_mon = 7
-    monday = (now + timedelta(days=days_to_mon)).replace(hour=0, minute=0, second=0, microsecond=0)
+def get_active_monday(now: datetime, week_change_day: int = 5) -> datetime:
+    """
+    Повертає понеділок «активного» тижня.
+    week_change_day: день тижня коли тиждень перемикається (0=Пн … 6=Нд, за замовч. 5=Сб)
+    - До цього дня (включно з пн–пт якщо зміна в сб) → поточний тиждень
+    - Починаючи з цього дня → наступний тиждень
+    """
+    this_monday = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    if now.weekday() >= week_change_day:
+        return this_monday + timedelta(weeks=1)
+    return this_monday
+
+
+async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5):
+    now    = datetime.now(TZ)
+    monday = get_active_monday(now, week_change_day)
     sunday = monday + timedelta(days=6)
 
     def date_label(dt):
@@ -346,8 +357,9 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     disable_web_page_preview=True)
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📅 Розклад на наступний тиждень"""
-    await weekly_preview(context.bot, str(update.effective_chat.id))
+    """📅 Розклад на тиждень"""
+    wcd = context.bot_data.get("week_change_day", 5)
+    await weekly_preview(context.bot, str(update.effective_chat.id), week_change_day=wcd)
 
 async def cmd_actuals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """⚡️ Активні нагадування"""
@@ -399,30 +411,42 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """⚙️ Налаштування бота"""
-    keyboard = [
-        [
-            InlineKeyboardButton("🌍 UTC+0  London",        callback_data="tz_UTC+0"),
-        ],
+    current_tz  = context.bot_data.get("timezone", "Europe/Warsaw")
+    wcd         = context.bot_data.get("week_change_day", 5)
+    now_local   = datetime.now(pytz.timezone(current_tz))
+
+    WCD_NAMES = {0:"Пн", 1:"Вт", 2:"Ср", 3:"Чт", 4:"Пт", 5:"Сб", 6:"Нд"}
+
+    tz_keyboard = [
+        [InlineKeyboardButton("🌍 UTC+0  London",         callback_data="tz_UTC+0")],
         [
             InlineKeyboardButton("🇵🇱 UTC+1  Warsaw/Paris", callback_data="tz_UTC+1"),
             InlineKeyboardButton("🇺🇦 UTC+2  Kyiv",         callback_data="tz_UTC+2"),
         ],
         [
-            InlineKeyboardButton("🇷🇺 UTC+3  Moscow",       callback_data="tz_UTC+3"),
+            InlineKeyboardButton("🇹🇷 UTC+3  Istanbul",     callback_data="tz_UTC+3"),
             InlineKeyboardButton("🇺🇸 UTC-5  New York",     callback_data="tz_UTC-5"),
         ],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Показати поточний часовий пояс
-    current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
-    now_local = datetime.now(pytz.timezone(current_tz))
+    wcd_keyboard = [
+        [
+            InlineKeyboardButton(f"{'✅ ' if wcd==4 else ''}Пт", callback_data="wcd_4"),
+            InlineKeyboardButton(f"{'✅ ' if wcd==5 else ''}Сб", callback_data="wcd_5"),
+            InlineKeyboardButton(f"{'✅ ' if wcd==6 else ''}Нд", callback_data="wcd_6"),
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(tz_keyboard + [[]] + wcd_keyboard)
+
     text = (
         "⚙️ <b>Налаштування</b>\n"
         "──────────────────────\n"
-        f"🕐 Поточний часовий пояс: <b>{current_tz}</b>\n"
-        f"🕐 Місцевий час зараз: <b>{now_local.strftime('%H:%M')}</b>\n\n"
-        "Оберіть ваш часовий пояс:"
+        f"🕐 Часовий пояс: <b>{current_tz}</b>\n"
+        f"🕐 Час зараз: <b>{now_local.strftime('%H:%M')}</b>\n\n"
+        f"📅 Тиждень оновлюється: <b>{WCD_NAMES[wcd]}</b>\n"
+        "<i>(у цей день /week переключається на наступний тиждень)</i>\n\n"
+        "<b>Оберіть часовий пояс:</b>"
     )
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
@@ -432,7 +456,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ℹ️ <b>Допомога по командах</b>\n"
         "──────────────────────\n"
         "📋 /daily — події на сьогодні\n"
-        "📅 /week — розклад на наступний тиждень\n"
+        "📅 /week — розклад на активний тиждень\n"
         "⚡️ /actuals — активні разові події\n"
         "📊 /reports — всі регулярні звіти з описом\n"
         "⚙️ /settings — налаштування (часовий пояс)\n"
@@ -450,31 +474,46 @@ TZ_MAP = {
     "tz_UTC+0": ("UTC",              "🌍 UTC+0 — London, Lisbon"),
     "tz_UTC+1": ("Europe/Warsaw",    "🇵🇱 UTC+1 — Warsaw, Paris, Berlin"),
     "tz_UTC+2": ("Europe/Kyiv",      "🇺🇦 UTC+2 — Kyiv, Helsinki"),
-    "tz_UTC+3": ("Europe/Moscow",    "🇷🇺 UTC+3 — Moscow, Istanbul"),
+    "tz_UTC+3": ("Europe/Istanbul",  "🇹🇷 UTC+3 — Istanbul, Dubai"),
     "tz_UTC-5": ("America/New_York", "🇺🇸 UTC-5 — New York, Toronto"),
 }
 
-async def handle_timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+WCD_NAMES = {0:"Понеділок", 1:"Вівторок", 2:"Середа", 3:"Четвер", 4:"П'ятниця", 5:"Субота", 6:"Неділя"}
+
+async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     data = query.data
-    if data not in TZ_MAP:
+
+    # ── Часовий пояс ──
+    if data in TZ_MAP:
+        tz_name, tz_label = TZ_MAP[data]
+        context.bot_data["timezone"] = tz_name
+        now_local = datetime.now(pytz.timezone(tz_name))
+        await query.edit_message_text(
+            f"✅ <b>Часовий пояс встановлено</b>\n"
+            f"──────────────────────\n"
+            f"{tz_label}\n"
+            f"🕐 Поточний час: <b>{now_local.strftime('%H:%M')}</b>\n\n"
+            f"<i>⚠️ Зміна часового поясу впливає лише на відображення. "
+            f"Розклад нагадувань зберігається за Europe/Warsaw (UTC+1/+2).</i>",
+            parse_mode="HTML"
+        )
         return
 
-    tz_name, tz_label = TZ_MAP[data]
-    context.bot_data["timezone"] = tz_name
-
-    now_local = datetime.now(pytz.timezone(tz_name))
-    await query.edit_message_text(
-        f"✅ <b>Часовий пояс встановлено</b>\n"
-        f"──────────────────────\n"
-        f"{tz_label}\n"
-        f"🕐 Поточний час: <b>{now_local.strftime('%H:%M')}</b>\n\n"
-        f"<i>⚠️ Примітка: зміна часового поясу впливає лише на відображення. "
-        f"Розклад нагадувань зберігається за Europe/Warsaw (UTC+1/+2).</i>",
-        parse_mode="HTML"
-    )
+    # ── День оновлення тижня ──
+    if data.startswith("wcd_"):
+        wcd = int(data.split("_")[1])
+        context.bot_data["week_change_day"] = wcd
+        await query.edit_message_text(
+            f"✅ <b>День оновлення тижня збережено</b>\n"
+            f"──────────────────────\n"
+            f"📅 Щo<b>{WCD_NAMES[wcd].lower()}</b> /week переключатиметься\n"
+            f"на наступний тиждень.\n\n"
+            f"<i>Введи /settings щоб змінити ще щось.</i>",
+            parse_mode="HTML"
+        )
+        return
 
 # ─────────────────────────────────────────
 #  Реєстрація команд у меню Telegram
@@ -483,7 +522,7 @@ async def handle_timezone_callback(update: Update, context: ContextTypes.DEFAULT
 async def set_bot_commands(bot: Bot):
     commands = [
         BotCommand("daily",   "📋 Зведення подій на сьогодні"),
-        BotCommand("week",    "📅 Розклад на наступний тиждень"),
+        BotCommand("week",    "📅 Розклад на активний тиждень"),
         BotCommand("actuals", "⚡️ Активні разові події"),
         BotCommand("reports", "📊 Всі регулярні звіти"),
         BotCommand("settings","⚙️ Налаштування"),
@@ -594,7 +633,7 @@ def main():
     app.add_handler(CommandHandler("help",     cmd_help))
 
     # ── Обробник кнопок (часовий пояс) ──
-    app.add_handler(CallbackQueryHandler(handle_timezone_callback, pattern="^tz_"))
+    app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(tz_|wcd_)"))
 
     print("✅ Бот запущено! Зупинити: Ctrl+C")
     app.run_polling(drop_pending_updates=True)

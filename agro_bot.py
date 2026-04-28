@@ -258,7 +258,7 @@ async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5
     def date_label(dt):
         return f"{dt.day} {MONTHS_UK[dt.month]}"
 
-    today_str   = f"{WEEKDAYS_UK[now.weekday()]}, {now.day:02d}.{now.month:02d} · {now_user.strftime('%H:%M')}"
+    today_str = f"{WEEKDAYS_UK[now_user.weekday()]}, {now_user.day:02d}.{now_user.month:02d} · {now_user.strftime('%H:%M')}"
     today_block = f"📍 <b>Сьогодні</b> — {today_str}"
 
     day_map = {}

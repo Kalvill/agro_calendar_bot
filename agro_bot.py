@@ -219,6 +219,29 @@ async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5
     def date_label(dt):
         return f"{dt.day} {MONTHS_UK[dt.month]}"
 
+    # ── Сьогоднішні події ──
+    today_lines = []
+    wd, m = now.weekday(), now.month
+    if wd == 0 and 4 <= m <= 11:
+        today_lines.append(f"🌱 {convert_time('22:00')} — {a('USDA Crop Progress', LINKS['crop'])}")
+    if wd == 2:
+        today_lines.append(f"🛢 {convert_time('16:30')} — {a('EIA Petroleum Status Report', LINKS['eia'])}")
+    if wd == 3:
+        today_lines.append(f"📊 {convert_time('14:30')} — {a('USDA Export Sales', LINKS['export_sales'])}")
+    if wd == 4:
+        today_lines.append(f"📈 {convert_time('21:30')} — {a('COT Report (CFTC)', LINKS['cot'])}")
+    for ev in ONE_TIME:
+        if ev["date"].date() == now.date():
+            today_lines.append(f"{ev['icon']} {convert_time(ev['preview_time'])} — {a(ev['name'], ev.get('link',''))}")
+
+    today_str = f"{WEEKDAYS_UK[now.weekday()]}, {now.day:02d}.{now.month:02d} · {now.strftime('%H:%M')}"
+    today_block = f"📍 <b>Сьогодні</b> — {today_str}\n"
+    if today_lines:
+        today_block += "\n".join(today_lines)
+    else:
+        today_block += "Звітів немає"
+
+    # решта коду без змін...
     day_map = {}
     for i in range(7):
         day = monday + timedelta(days=i)
@@ -238,9 +261,12 @@ async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5
         if lst:
             day_map[i] = (day, lst)
 
-    header = (f"📅 <b>Розклад на тиждень</b>\n"
-              f"{date_label(monday)} — {date_label(sunday)} {sunday.year}\n"
-              f"──────────────────────")
+    header = (
+        f"{today_block}\n\n"
+        f"📅 <b>Розклад на тиждень</b>\n"
+        f"{date_label(monday)} — {date_label(sunday)} {sunday.year}\n"
+        f"──────────────────────"
+    )
 
     if not day_map:
         await send(bot, header + "\n\nЦього тижня запланованих подій немає.", chat_id)
@@ -255,7 +281,6 @@ async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5
         for time_str, icon, name, url in lst:
             lines.append(f"  {icon} {time_str} — {a(name, url)}")
     await send(bot, "\n".join(lines), chat_id)
-
 # ─────────────────────────────────────────
 #  Крон-задачі (обгортки для scheduler)
 # ─────────────────────────────────────────

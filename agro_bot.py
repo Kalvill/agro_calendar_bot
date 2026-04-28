@@ -473,10 +473,8 @@ def convert_time(time_str: str) -> str:
 
     h, m = map(int, time_str.split(":"))
 
-    # Поточний офсет Варшави відносно UTC (в хвилинах)
-    import datetime as _dt
-    warsaw_offset_sec = TZ.utcoffset(_dt.datetime.now()).total_seconds()
-    warsaw_offset_min = int(warsaw_offset_sec / 60)
+    # Поточний офсет Варшави відносно UTC (в хвилинах) — aware datetime враховує DST
+    warsaw_offset_min = int(datetime.now(TZ).utcoffset().total_seconds() / 60)
 
     # Офсет вибраного користувачем поясу
     tz_key = get_pref("tz_key", "tz_UTC+1")

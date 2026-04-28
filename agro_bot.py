@@ -411,47 +411,13 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """⚙️ Налаштування бота"""
-    current_tz  = context.bot_data.get("timezone", "Europe/Warsaw")
-    wcd         = context.bot_data.get("week_change_day", 5)
-    now_local   = datetime.now(pytz.timezone(current_tz))
-
-    WCD_NAMES = {0:"Пн", 1:"Вт", 2:"Ср", 3:"Чт", 4:"Пт", 5:"Сб", 6:"Нд"}
-
-    tz_keyboard = [
-        [InlineKeyboardButton("🌍 UTC+0  London",         callback_data="tz_UTC+0")],
-        [
-            InlineKeyboardButton("🇵🇱 UTC+1  Warsaw/Paris", callback_data="tz_UTC+1"),
-            InlineKeyboardButton("🇺🇦 UTC+2  Kyiv",         callback_data="tz_UTC+2"),
-        ],
-        [
-            InlineKeyboardButton("🇹🇷 UTC+3  Istanbul",     callback_data="tz_UTC+3"),
-            InlineKeyboardButton("🇺🇸 UTC-5  New York",     callback_data="tz_UTC-5"),
-        ],
-    ]
-
-    wcd_keyboard = [
-        [
-            InlineKeyboardButton(f"{'✅ ' if wcd==4 else ''}Пт", callback_data="wcd_4"),
-            InlineKeyboardButton(f"{'✅ ' if wcd==5 else ''}Сб", callback_data="wcd_5"),
-            InlineKeyboardButton(f"{'✅ ' if wcd==6 else ''}Нд", callback_data="wcd_6"),
-        ]
-    ]
-    done_keyboard = [[InlineKeyboardButton("✅  Готово", callback_data="settings_done")]]
-
-    reply_markup = InlineKeyboardMarkup(tz_keyboard + wcd_keyboard + done_keyboard)
-    tz_label_map  = {v[0]: v[1] for v in TZ_MAP.values()}
-    tz_display    = tz_label_map.get(current_tz, current_tz)
-
-    text = (
-        "⚙️ <b>Налаштування</b>\n"
-        "──────────────────────\n"
-        f"🕐 Часовий пояс: <b>{tz_display}</b>\n"
-        f"🕐 Час зараз: <b>{now_local.strftime('%H:%M')}</b>\n\n"
-        f"📅 Тиждень оновлюється: <b>{WCD_NAMES[wcd]}</b>\n"
-        "<i>(у цей день /week переключається на наступний тиждень)</i>\n\n"
-        "<b>Оберіть часовий пояс:</b>"
+    current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
+    wcd        = context.bot_data.get("week_change_day", 5)
+    await update.message.reply_text(
+        build_settings_text(current_tz, wcd),
+        parse_mode="HTML",
+        reply_markup=build_settings_markup(wcd),
     )
-    await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """❓ Допомога по командах"""

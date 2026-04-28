@@ -414,9 +414,9 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
     wcd        = context.bot_data.get("week_change_day", 5)
     await update.message.reply_text(
-        build_settings_text(current_tz, wcd),
+        text_main(current_tz, wcd),
         parse_mode="HTML",
-        reply_markup=build_settings_markup(wcd),
+        reply_markup=markup_main(current_tz, wcd),
     )
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -449,28 +449,47 @@ TZ_MAP = {
 
 WCD_NAMES = {0:"Понеділок", 1:"Вівторок", 2:"Середа", 3:"Четвер", 4:"П'ятниця", 5:"Субота", 6:"Неділя"}
 
-def build_settings_markup(wcd: int) -> InlineKeyboardMarkup:
-    tz_keyboard = [
-        [InlineKeyboardButton("🌍 UTC+0  London",         callback_data="tz_UTC+0")],
+# ─────────────────────────────────────────
+#  Екрани налаштувань (3 рівні)
+# ─────────────────────────────────────────
+
+def markup_main(current_tz: str, wcd: int) -> InlineKeyboardMarkup:
+    """Головний екран: дві кнопки-категорії + Готово"""
+    tz_label_map = {v[0]: v[1] for v in TZ_MAP.values()}
+    tz_display   = tz_label_map.get(current_tz, current_tz)
+    wcd_short    = {4:"Пт", 5:"Сб", 6:"Нд"}.get(wcd, "?")
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🕐 Часовий пояс: {tz_display}", callback_data="s_open_tz")],
+        [InlineKeyboardButton(f"📅 День переактуалізації: {wcd_short}", callback_data="s_open_wcd")],
+        [InlineKeyboardButton("✅  Готово", callback_data="settings_done")],
+    ])
+
+def markup_tz() -> InlineKeyboardMarkup:
+    """Екран вибору часового поясу"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌍 UTC+0  London",          callback_data="tz_UTC+0")],
         [
-            InlineKeyboardButton("🇵🇱 UTC+1  Warsaw/Paris", callback_data="tz_UTC+1"),
-            InlineKeyboardButton("🇺🇦 UTC+2  Kyiv",         callback_data="tz_UTC+2"),
+            InlineKeyboardButton("🇵🇱 UTC+1  Warsaw/Paris",  callback_data="tz_UTC+1"),
+            InlineKeyboardButton("🇺🇦 UTC+2  Kyiv",          callback_data="tz_UTC+2"),
         ],
         [
-            InlineKeyboardButton("🇹🇷 UTC+3  Istanbul",     callback_data="tz_UTC+3"),
-            InlineKeyboardButton("🇺🇸 UTC-5  New York",     callback_data="tz_UTC-5"),
+            InlineKeyboardButton("🇹🇷 UTC+3  Istanbul",      callback_data="tz_UTC+3"),
+            InlineKeyboardButton("🇺🇸 UTC-5  New York",      callback_data="tz_UTC-5"),
         ],
-    ]
-    wcd_keyboard = [[
-        InlineKeyboardButton(f"{'✅ ' if wcd==4 else ''}Пт", callback_data="wcd_4"),
-        InlineKeyboardButton(f"{'✅ ' if wcd==5 else ''}Сб", callback_data="wcd_5"),
-        InlineKeyboardButton(f"{'✅ ' if wcd==6 else ''}Нд", callback_data="wcd_6"),
-    ]]
-    done_keyboard = [[InlineKeyboardButton("✅  Готово", callback_data="settings_done")]]
-    return InlineKeyboardMarkup(tz_keyboard + wcd_keyboard + done_keyboard)
+        [InlineKeyboardButton("← Назад",                   callback_data="s_back")],
+    ])
 
+def markup_wcd(wcd: int) -> InlineKeyboardMarkup:
+    """Екран вибору дня переактуалізації"""
+    def btn(label, day):
+        prefix = "✅ " if wcd == day else ""
+        return InlineKeyboardButton(f"{prefix}{label}", callback_data=f"wcd_{day}")
+    return InlineKeyboardMarkup([
+        [btn("П'ятниця", 4), btn("Субота", 5), btn("Неділя", 6)],
+        [InlineKeyboardButton("← Назад", callback_data="s_back")],
+    ])
 
-def build_settings_text(current_tz: str, wcd: int) -> str:
+def text_main(current_tz: str, wcd: int) -> str:
     tz_label_map = {v[0]: v[1] for v in TZ_MAP.values()}
     tz_display   = tz_label_map.get(current_tz, current_tz)
     now_local    = datetime.now(pytz.timezone(current_tz))
@@ -480,44 +499,74 @@ def build_settings_text(current_tz: str, wcd: int) -> str:
         f"🕐 Часовий пояс: <b>{tz_display}</b>\n"
         f"🕐 Час зараз: <b>{now_local.strftime('%H:%M')}</b>\n\n"
         f"📅 Тиждень оновлюється: <b>{WCD_NAMES[wcd]}</b>\n"
-        "<i>(у цей день /week переключається на наступний тиждень)</i>\n\n"
-        "<b>Оберіть часовий пояс:</b>"
+        "<i>(у цей день /week переключається на наступний тиждень)</i>"
+    )
+
+def text_tz() -> str:
+    return (
+        "⚙️ <b>Налаштування → Часовий пояс</b>\n"
+        "──────────────────────\n"
+        "Оберіть ваш часовий пояс:"
+    )
+
+def text_wcd(wcd: int) -> str:
+    return (
+        "⚙️ <b>Налаштування → День переактуалізації</b>\n"
+        "──────────────────────\n"
+        "Оберіть день, коли /week переключається\n"
+        "на наступний тиждень:"
     )
 
 
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
+    data       = query.data
+    current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
+    wcd        = context.bot_data.get("week_change_day", 5)
 
-    # ── Закрити налаштування ──
+    # ── Закрити ──
     if data == "settings_done":
         await query.delete_message()
         return
 
-    # ── Часовий пояс ──
+    # ── Назад до головного екрану ──
+    if data == "s_back":
+        await query.edit_message_text(
+            text_main(current_tz, wcd), parse_mode="HTML",
+            reply_markup=markup_main(current_tz, wcd))
+        return
+
+    # ── Відкрити підменю часового поясу ──
+    if data == "s_open_tz":
+        await query.edit_message_text(
+            text_tz(), parse_mode="HTML", reply_markup=markup_tz())
+        return
+
+    # ── Відкрити підменю дня переактуалізації ──
+    if data == "s_open_wcd":
+        await query.edit_message_text(
+            text_wcd(wcd), parse_mode="HTML", reply_markup=markup_wcd(wcd))
+        return
+
+    # ── Зберегти часовий пояс → повернутись на головний ──
     if data in TZ_MAP:
         tz_name, _ = TZ_MAP[data]
         context.bot_data["timezone"] = tz_name
-        wcd = context.bot_data.get("week_change_day", 5)
         await query.edit_message_text(
-            build_settings_text(tz_name, wcd),
-            parse_mode="HTML",
-            reply_markup=build_settings_markup(wcd),
-        )
+            text_main(tz_name, wcd), parse_mode="HTML",
+            reply_markup=markup_main(tz_name, wcd))
         return
 
-    # ── День оновлення тижня ──
+    # ── Зберегти день переактуалізації → повернутись на головний ──
     if data.startswith("wcd_"):
         wcd = int(data.split("_")[1])
         context.bot_data["week_change_day"] = wcd
-        current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
         await query.edit_message_text(
-            build_settings_text(current_tz, wcd),
-            parse_mode="HTML",
-            reply_markup=build_settings_markup(wcd),
-        )
+            text_main(current_tz, wcd), parse_mode="HTML",
+            reply_markup=markup_main(current_tz, wcd))
         return
+
 
 # ─────────────────────────────────────────
 #  Реєстрація команд у меню Telegram

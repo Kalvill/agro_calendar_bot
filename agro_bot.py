@@ -225,16 +225,16 @@ async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5
         wd, m = day.weekday(), day.month
         lst = []
         if wd == 0 and 4 <= m <= 11:
-            lst.append(("22:00", "🌱", "USDA Crop Progress", LINKS["crop"]))
+            lst.append((convert_time("22:00"), "🌱", "USDA Crop Progress", LINKS["crop"]))
         if wd == 2:
-            lst.append(("16:30", "🛢", "EIA Petroleum Status Report", LINKS["eia"]))
+            lst.append((convert_time("16:30"), "🛢", "EIA Petroleum Status Report", LINKS["eia"]))
         if wd == 3:
-            lst.append(("14:30", "📊", "USDA Export Sales", LINKS["export_sales"]))
+            lst.append((convert_time("14:30"), "📊", "USDA Export Sales", LINKS["export_sales"]))
         if wd == 4:
-            lst.append(("21:30", "📈", "COT Report (CFTC)", LINKS["cot"]))
+            lst.append((convert_time("21:30"), "📈", "COT Report (CFTC)", LINKS["cot"]))
         for ev in ONE_TIME:
             if ev["date"].date() == day.date():
-                lst.append((ev["preview_time"], ev["icon"], ev["name"], ev.get("link", "")))
+                lst.append((convert_time(ev["preview_time"]), ev["icon"], ev["name"], ev.get("link", "")))
         if lst:
             day_map[i] = (day, lst)
 
@@ -340,20 +340,20 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     wd, m = now.weekday(), now.month
     if wd == 0 and 4 <= m <= 11:
-        lines.append(f"🌱 22:00 — {a('USDA Crop Progress', LINKS['crop'])}")
+        lines.append(f"🌱 {convert_time('22:00')} — {a('USDA Crop Progress', LINKS['crop'])}")
         found = True
     if wd == 2:
-        lines.append(f"🛢 16:30 — {a('EIA Petroleum Status Report', LINKS['eia'])}")
+        lines.append(f"🛢 {convert_time('16:30')} — {a('EIA Petroleum Status Report', LINKS['eia'])}")
         found = True
     if wd == 3:
-        lines.append(f"📊 14:30 — {a('USDA Export Sales', LINKS['export_sales'])}")
+        lines.append(f"📊 {convert_time('14:30')} — {a('USDA Export Sales', LINKS['export_sales'])}")
         found = True
     if wd == 4:
-        lines.append(f"📈 21:30 — {a('COT Report (CFTC)', LINKS['cot'])}")
+        lines.append(f"📈 {convert_time('21:30')} — {a('COT Report (CFTC)', LINKS['cot'])}")
         found = True
     for ev in ONE_TIME:
         if ev["date"].date() == now.date():
-            lines.append(f"{ev['icon']} {ev['preview_time']} — {a(ev['name'], ev.get('link',''))}")
+            lines.append(f"{ev['icon']} {convert_time(ev['preview_time'])} — {a(ev['name'], ev.get('link',''))}")
             found = True
 
     if not found:
@@ -379,7 +379,7 @@ async def cmd_actuals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = ["⚡️ <b>Активні разові події</b>", "──────────────────────"]
     for ev in upcoming[:10]:
         d = ev["date"]
-        lines.append(f"{ev['icon']} <b>{d.day:02d}.{d.month:02d}</b> {ev['preview_time']} — "
+        lines.append(f"{ev['icon']} <b>{d.day:02d}.{d.month:02d}</b> {convert_time(ev['preview_time'])} — "
                      f"{a(ev['name'], ev.get('link',''))}")
         if ev.get("note"):
             lines.append(f"   💬 {ev['note']}")
@@ -396,22 +396,22 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 <b>Регулярні звіти</b>\n"
         "──────────────────────\n"
         f"🌱 <b>USDA Crop Progress</b> — {a('посилання', LINKS['crop'])}\n"
-        "   Щопонеділка 22:00 (квіт–листоп)\n"
+        f"   Щопонеділка {convert_time('22:00')} (квіт–листоп)\n"
         f"   🟢 {TICKERS['crop_progress']['direct']}\n\n"
         f"🛢 <b>EIA Petroleum Status</b> — {a('посилання', LINKS['eia'])}\n"
-        "   Щосереди 16:30\n"
+        f"   Щосереди {convert_time('16:30')}\n"
         f"   🟢 {TICKERS['eia']['direct']}\n\n"
         f"📊 <b>USDA Export Sales</b> — {a('посилання', LINKS['export_sales'])}\n"
-        "   Щочетверга 14:30\n"
+        f"   Щочетверга {convert_time('14:30')}\n"
         f"   🟢 {TICKERS['export_sales']['direct']}\n\n"
         f"📈 <b>COT Report (CFTC)</b> — {a('посилання', LINKS['cot'])}\n"
-        "   Щоп'ятниці 21:30\n"
+        f"   Щоп'ятниці {convert_time('21:30')}\n"
         f"   🟢 {TICKERS['cot']['direct']}\n\n"
         f"⚠️ <b>USDA WASDE</b> — {a('посилання', LINKS['wasde'])}\n"
-        "   Щомісяця, ~12-е число, 18:00\n"
+        f"   Щомісяця, ~12-е число, {convert_time('18:00')}\n"
         f"   🟢 {TICKERS['wasde']['direct']}\n\n"
         f"🫘 <b>USDA Oilseeds</b> — {a('посилання', LINKS['oilseeds'])}\n"
-        "   Одночасно з WASDE, 18:15"
+        f"   Одночасно з WASDE, {convert_time('18:15')}"
     )
     await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
@@ -461,6 +461,32 @@ def tz_now(tz_key: str) -> datetime:
 
 def tz_label(tz_key: str) -> str:
     return TZ_MAP.get(tz_key, (0, tz_key))[1]
+
+def convert_time(time_str: str) -> str:
+    """
+    Конвертує рядок часу з варшавського часу (TZ = Europe/Warsaw)
+    у вибраний користувачем часовий пояс.
+    Наприклад: "22:00" при UTC+0 → "20:00" (влітку, коли Warsaw = UTC+2)
+    """
+    if not time_str or ":" not in time_str:
+        return time_str  # "протягом дня" або порожній рядок
+
+    h, m = map(int, time_str.split(":"))
+
+    # Поточний офсет Варшави відносно UTC (в хвилинах)
+    import datetime as _dt
+    warsaw_offset_sec = TZ.utcoffset(_dt.datetime.now()).total_seconds()
+    warsaw_offset_min = int(warsaw_offset_sec / 60)
+
+    # Офсет вибраного користувачем поясу
+    tz_key = get_pref("tz_key", "tz_UTC+1")
+    user_offset_min = TZ_MAP.get(tz_key, (60,))[0]
+
+    # Різниця офсетів
+    delta = user_offset_min - warsaw_offset_min
+    total_min = h * 60 + m + delta
+    total_min = total_min % (24 * 60)
+    return f"{total_min // 60:02d}:{total_min % 60:02d}"
 
 WCD_NAMES = {0:"Понеділок", 1:"Вівторок", 2:"Середа", 3:"Четвер", 4:"П'ятниця", 5:"Субота", 6:"Неділя"}
 
@@ -536,10 +562,15 @@ def text_main(tz_key: str, wcd: int) -> str:
     )
 
 def text_tz() -> str:
+    cur = get_pref("tz_key", "tz_UTC+1")
+    now = tz_now(cur)
+    label = tz_label(cur)
     return (
         "⚙️ <b>Налаштування → Часовий пояс</b>\n"
         "──────────────────────\n"
-        "Оберіть ваш часовий пояс:"
+        f"✅ Вибрано: <b>{label}</b>\n"
+        f"🕐 Час зараз: <b>{now.strftime('%H:%M')}</b>\n\n"
+        "Оберіть інший пояс або поверніться назад:"
     )
 
 def text_wcd(wcd: int) -> str:
@@ -627,12 +658,15 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
             reply_markup=markup_notify(_cur_nm(), _cur_nr()))
         return
 
-    # ── Зберегти часовий пояс → повернутись на головний ──
+    # ── Зберегти часовий пояс → залишитись на екрані TZ з оновленим часом ──
     if data in TZ_MAP:
         set_pref("tz_key", data)
-        await query.edit_message_text(
-            text_main(data, _cur_wcd()), parse_mode="HTML",
-            reply_markup=markup_main(data, _cur_wcd()))
+        # залишаємось на TZ-екрані — користувач одразу бачить оновлений час
+        try:
+            await query.edit_message_text(
+                text_tz(), parse_mode="HTML", reply_markup=markup_tz())
+        except Exception:
+            pass  # якщо текст не змінився — ігноруємо
         return
 
     # ── Зберегти день переактуалізації → повернутись на головний ──

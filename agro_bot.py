@@ -262,20 +262,21 @@ async def weekly_preview(bot: Bot, chat_id: str = None, week_change_day: int = 5
 
 def make_cron_jobs(bot: Bot):
     async def job_crop_morning():
-        if 4 <= datetime.now(TZ).month <= 11:
+        if 4 <= datetime.now(TZ).month <= 11 and get_pref("notify_morning", True):
             t = TICKERS["crop_progress"]
             await send(bot, msg_reminder("🌱", "USDA Crop Progress", "22:00",
                 desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
                 direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
 
     async def job_crop_release():
-        if 4 <= datetime.now(TZ).month <= 11:
+        if 4 <= datetime.now(TZ).month <= 11 and get_pref("notify_release", True):
             t = TICKERS["crop_progress"]
             await send(bot, msg_release("🌱", "USDA Crop Progress", "22:00",
                 desc="Щотижневий звіт USDA про стан посівів та збору врожаю по штатах США.",
                 direct=t["direct"], indirect=t["indirect"], link=LINKS["crop"]))
 
     async def job_eia_morning():
+        if not get_pref("notify_morning", True): return
         t = TICKERS["eia"]
         await send(bot, msg_reminder("🛢", "EIA Petroleum Status Report", "16:30",
             desc="Тижневі запаси нафти/газу від Energy Information Administration.",
@@ -283,24 +284,28 @@ def make_cron_jobs(bot: Bot):
             note="Нафта → попит на biodiesel → соєва олія → ZM", link=LINKS["eia"]))
 
     async def job_eia_release():
+        if not get_pref("notify_release", True): return
         t = TICKERS["eia"]
         await send(bot, msg_release("🛢", "EIA Petroleum Status Report", "16:30",
             desc="Тижневі запаси нафти/газу від Energy Information Administration.",
             direct=t["direct"], indirect=t["indirect"], link=LINKS["eia"]))
 
     async def job_export_morning():
+        if not get_pref("notify_morning", True): return
         t = TICKERS["export_sales"]
         await send(bot, msg_reminder("📊", "USDA Export Sales", "14:30",
             desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
             direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
 
     async def job_export_release():
+        if not get_pref("notify_release", True): return
         t = TICKERS["export_sales"]
         await send(bot, msg_release("📊", "USDA Export Sales", "14:30",
             desc="Щотижневий звіт про фактичні експортні продажі агро-товарів США.",
             direct=t["direct"], indirect=t["indirect"], link=LINKS["export_sales"]))
 
     async def job_cot_morning():
+        if not get_pref("notify_morning", True): return
         t = TICKERS["cot"]
         await send(bot, msg_reminder("📈", "COT Report (CFTC)", "21:30",
             desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.",
@@ -308,6 +313,7 @@ def make_cron_jobs(bot: Bot):
             note="Дані фіксуються у вівторок, публікуються в п'ятницю", link=LINKS["cot"]))
 
     async def job_cot_release():
+        if not get_pref("notify_release", True): return
         t = TICKERS["cot"]
         await send(bot, msg_release("📈", "COT Report (CFTC)", "21:30",
             desc="Звіт CFTC про позиції трейдерів на ф'ючерсних ринках.\n"
@@ -358,7 +364,7 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """📅 Розклад на тиждень"""
-    wcd = context.bot_data.get("week_change_day", 5)
+    wcd = get_pref("week_change_day", 5)
     await weekly_preview(context.bot, str(update.effective_chat.id), week_change_day=wcd)
 
 async def cmd_actuals(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -411,8 +417,8 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """⚙️ Налаштування бота"""
-    current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
-    wcd        = context.bot_data.get("week_change_day", 5)
+    current_tz = get_pref("timezone", "Europe/Warsaw")
+    wcd        = get_pref("week_change_day", 5)
     await update.message.reply_text(
         text_main(current_tz, wcd),
         parse_mode="HTML",
@@ -450,17 +456,40 @@ TZ_MAP = {
 WCD_NAMES = {0:"Понеділок", 1:"Вівторок", 2:"Середа", 3:"Четвер", 4:"П'ятниця", 5:"Субота", 6:"Неділя"}
 
 # ─────────────────────────────────────────
+#  Глобальні налаштування користувача
+#  (зберігаються в пам'яті поки бот живий)
+# ─────────────────────────────────────────
+USER_PREFS: dict = {
+    "timezone":        "Europe/Warsaw",
+    "week_change_day": 5,
+    "notify_morning":  True,   # нагадування о 8:00
+    "notify_release":  True,   # сповіщення в момент виходу
+}
+
+def get_pref(key, default=None):
+    return USER_PREFS.get(key, default)
+
+def set_pref(key, value):
+    USER_PREFS[key] = value
+
+# ─────────────────────────────────────────
 #  Екрани налаштувань (3 рівні)
 # ─────────────────────────────────────────
 
 def markup_main(current_tz: str, wcd: int) -> InlineKeyboardMarkup:
-    """Головний екран: дві кнопки-категорії + Готово"""
+    """Головний екран: три кнопки-категорії + Готово"""
     tz_label_map = {v[0]: v[1] for v in TZ_MAP.values()}
     tz_display   = tz_label_map.get(current_tz, current_tz)
     wcd_short    = {4:"Пт", 5:"Сб", 6:"Нд"}.get(wcd, "?")
+    nm = get_pref("notify_morning", True)
+    nr = get_pref("notify_release", True)
+    notify_icon  = ("🔔🔔" if nm and nr else
+                    "🔔🔕" if nm and not nr else
+                    "🔕🔔" if not nm and nr else "🔕🔕")
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"🕐 Часовий пояс: {tz_display}", callback_data="s_open_tz")],
         [InlineKeyboardButton(f"📅 День переактуалізації: {wcd_short}", callback_data="s_open_wcd")],
+        [InlineKeyboardButton(f"{notify_icon} Сповіщення", callback_data="s_open_notify")],
         [InlineKeyboardButton("✅  Готово", callback_data="settings_done")],
     ])
 
@@ -517,13 +546,36 @@ def text_wcd(wcd: int) -> str:
         "на наступний тиждень:"
     )
 
+def markup_notify(notify_morning: bool, notify_release: bool) -> InlineKeyboardMarkup:
+    m_icon = "🔔 8:00 — Увімкнено"  if notify_morning else "🔕 8:00 — Вимкнено"
+    r_icon = "🔔 Момент виходу — Увімкнено" if notify_release else "🔕 Момент виходу — Вимкнено"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(m_icon, callback_data="n_morning")],
+        [InlineKeyboardButton(r_icon, callback_data="n_release")],
+        [InlineKeyboardButton("← Назад", callback_data="s_back")],
+    ])
+
+def text_notify(notify_morning: bool, notify_release: bool) -> str:
+    m_status = "🔔 Увімкнено" if notify_morning else "🔕 Вимкнено"
+    r_status = "🔔 Увімкнено" if notify_release else "🔕 Вимкнено"
+    return (
+        "⚙️ <b>Налаштування → Сповіщення</b>\n"
+        "──────────────────────\n"
+        f"🕗 Нагадування о 8:00: <b>{m_status}</b>\n"
+        f"📢 Момент виходу звіту: <b>{r_status}</b>\n\n"
+        "<i>Натисніть кнопку щоб увімкнути/вимкнути</i>"
+    )
+
 
 async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data       = query.data
-    current_tz = context.bot_data.get("timezone", "Europe/Warsaw")
-    wcd        = context.bot_data.get("week_change_day", 5)
+    data = query.data
+
+    def _cur_tz():  return get_pref("timezone", "Europe/Warsaw")
+    def _cur_wcd(): return get_pref("week_change_day", 5)
+    def _cur_nm():  return get_pref("notify_morning", True)
+    def _cur_nr():  return get_pref("notify_release", True)
 
     # ── Закрити ──
     if data == "settings_done":
@@ -533,8 +585,8 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     # ── Назад до головного екрану ──
     if data == "s_back":
         await query.edit_message_text(
-            text_main(current_tz, wcd), parse_mode="HTML",
-            reply_markup=markup_main(current_tz, wcd))
+            text_main(_cur_tz(), _cur_wcd()), parse_mode="HTML",
+            reply_markup=markup_main(_cur_tz(), _cur_wcd()))
         return
 
     # ── Відкрити підменю часового поясу ──
@@ -546,25 +598,47 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     # ── Відкрити підменю дня переактуалізації ──
     if data == "s_open_wcd":
         await query.edit_message_text(
-            text_wcd(wcd), parse_mode="HTML", reply_markup=markup_wcd(wcd))
+            text_wcd(_cur_wcd()), parse_mode="HTML", reply_markup=markup_wcd(_cur_wcd()))
+        return
+
+    # ── Відкрити підменю сповіщень ──
+    if data == "s_open_notify":
+        await query.edit_message_text(
+            text_notify(_cur_nm(), _cur_nr()), parse_mode="HTML",
+            reply_markup=markup_notify(_cur_nm(), _cur_nr()))
+        return
+
+    # ── Тумблери сповіщень ──
+    if data == "n_morning":
+        set_pref("notify_morning", not _cur_nm())
+        await query.edit_message_text(
+            text_notify(_cur_nm(), _cur_nr()), parse_mode="HTML",
+            reply_markup=markup_notify(_cur_nm(), _cur_nr()))
+        return
+
+    if data == "n_release":
+        set_pref("notify_release", not _cur_nr())
+        await query.edit_message_text(
+            text_notify(_cur_nm(), _cur_nr()), parse_mode="HTML",
+            reply_markup=markup_notify(_cur_nm(), _cur_nr()))
         return
 
     # ── Зберегти часовий пояс → повернутись на головний ──
     if data in TZ_MAP:
         tz_name, _ = TZ_MAP[data]
-        context.bot_data["timezone"] = tz_name
+        set_pref("timezone", tz_name)
         await query.edit_message_text(
-            text_main(tz_name, wcd), parse_mode="HTML",
-            reply_markup=markup_main(tz_name, wcd))
+            text_main(tz_name, _cur_wcd()), parse_mode="HTML",
+            reply_markup=markup_main(tz_name, _cur_wcd()))
         return
 
     # ── Зберегти день переактуалізації → повернутись на головний ──
     if data.startswith("wcd_"):
         wcd = int(data.split("_")[1])
-        context.bot_data["week_change_day"] = wcd
+        set_pref("week_change_day", wcd)
         await query.edit_message_text(
-            text_main(current_tz, wcd), parse_mode="HTML",
-            reply_markup=markup_main(current_tz, wcd))
+            text_main(_cur_tz(), wcd), parse_mode="HTML",
+            reply_markup=markup_main(_cur_tz(), wcd))
         return
 
 
@@ -696,7 +770,7 @@ def main():
     app.add_handler(CommandHandler("help",     cmd_help))
 
     # ── Обробник кнопок (часовий пояс) ──
-    app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(tz_|wcd_|s_|settings_done)"))
+    app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(tz_|wcd_|s_|n_|settings_done)"))
 
     print("✅ Бот запущено! Зупинити: Ctrl+C")
     app.run_polling(drop_pending_updates=True)

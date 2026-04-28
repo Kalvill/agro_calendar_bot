@@ -696,7 +696,7 @@ def main():
     app.add_handler(CommandHandler("help",     cmd_help))
 
     # ── Обробник кнопок (часовий пояс) ──
-    app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(tz_|wcd_)"))
+    app.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(tz_|wcd_|s_|settings_done)"))
 
     print("✅ Бот запущено! Зупинити: Ctrl+C")
     app.run_polling(drop_pending_updates=True)

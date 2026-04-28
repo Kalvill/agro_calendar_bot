@@ -417,7 +417,7 @@ async def cmd_reports(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """⚙️ Налаштування бота"""
-    current_tz = get_pref("timezone", "Europe/Warsaw")
+    current_tz = get_pref("tz_key", "tz_UTC+1")
     wcd        = get_pref("week_change_day", 5)
     await update.message.reply_text(
         text_main(current_tz, wcd),
@@ -445,13 +445,22 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #  Обробка вибору часового поясу
 # ─────────────────────────────────────────
 
+# tz_key → (fixed_offset_minutes, display_label)
 TZ_MAP = {
-    "tz_UTC+0": ("UTC",              "🌍 UTC+0 — London, Lisbon"),
-    "tz_UTC+1": ("Europe/Warsaw",    "🇵🇱 UTC+1 — Warsaw, Paris, Berlin"),
-    "tz_UTC+2": ("Europe/Kyiv",      "🇺🇦 UTC+2 — Kyiv, Helsinki"),
-    "tz_UTC+3": ("Europe/Istanbul",  "🇹🇷 UTC+3 — Istanbul, Dubai"),
-    "tz_UTC-5": ("America/New_York", "🇺🇸 UTC-5 — New York, Toronto"),
+    "tz_UTC+0": (   0, "🌍 UTC+0 — London, Lisbon"),
+    "tz_UTC+1": (  60, "🇵🇱 UTC+1 — Warsaw, Paris, Berlin"),
+    "tz_UTC+2": ( 120, "🇺🇦 UTC+2 — Kyiv, Helsinki"),
+    "tz_UTC+3": ( 180, "🇹🇷 UTC+3 — Istanbul, Dubai"),
+    "tz_UTC-5": (-300, "🇺🇸 UTC-5 — New York, Toronto"),
 }
+
+def tz_now(tz_key: str) -> datetime:
+    """Поточний час у фіксованому UTC-офсеті."""
+    offset_min = TZ_MAP.get(tz_key, (60,))[0]
+    return datetime.now(pytz.utc) + timedelta(minutes=offset_min)
+
+def tz_label(tz_key: str) -> str:
+    return TZ_MAP.get(tz_key, (0, tz_key))[1]
 
 WCD_NAMES = {0:"Понеділок", 1:"Вівторок", 2:"Середа", 3:"Четвер", 4:"П'ятниця", 5:"Субота", 6:"Неділя"}
 
@@ -460,7 +469,7 @@ WCD_NAMES = {0:"Понеділок", 1:"Вівторок", 2:"Середа", 3:"
 #  (зберігаються в пам'яті поки бот живий)
 # ─────────────────────────────────────────
 USER_PREFS: dict = {
-    "timezone":        "Europe/Warsaw",
+    "tz_key":          "tz_UTC+1",  # ключ з TZ_MAP
     "week_change_day": 5,
     "notify_morning":  True,   # нагадування о 8:00
     "notify_release":  True,   # сповіщення в момент виходу
@@ -478,8 +487,7 @@ def set_pref(key, value):
 
 def markup_main(current_tz: str, wcd: int) -> InlineKeyboardMarkup:
     """Головний екран: три кнопки-категорії + Готово"""
-    tz_label_map = {v[0]: v[1] for v in TZ_MAP.values()}
-    tz_display   = tz_label_map.get(current_tz, current_tz)
+    tz_display = tz_label(current_tz)
     wcd_short    = {4:"Пт", 5:"Сб", 6:"Нд"}.get(wcd, "?")
     nm = get_pref("notify_morning", True)
     nr = get_pref("notify_release", True)
@@ -495,17 +503,15 @@ def markup_main(current_tz: str, wcd: int) -> InlineKeyboardMarkup:
 
 def markup_tz() -> InlineKeyboardMarkup:
     """Екран вибору часового поясу"""
+    cur = get_pref("tz_key", "tz_UTC+1")
+    def btn(label, key):
+        prefix = "✅ " if cur == key else ""
+        return InlineKeyboardButton(f"{prefix}{label}", callback_data=key)
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌍 UTC+0  London",          callback_data="tz_UTC+0")],
-        [
-            InlineKeyboardButton("🇵🇱 UTC+1  Warsaw/Paris",  callback_data="tz_UTC+1"),
-            InlineKeyboardButton("🇺🇦 UTC+2  Kyiv",          callback_data="tz_UTC+2"),
-        ],
-        [
-            InlineKeyboardButton("🇹🇷 UTC+3  Istanbul",      callback_data="tz_UTC+3"),
-            InlineKeyboardButton("🇺🇸 UTC-5  New York",      callback_data="tz_UTC-5"),
-        ],
-        [InlineKeyboardButton("← Назад",                   callback_data="s_back")],
+        [btn("🌍 UTC+0  London",         "tz_UTC+0")],
+        [btn("🇵🇱 UTC+1  Warsaw/Paris",  "tz_UTC+1"), btn("🇺🇦 UTC+2  Kyiv", "tz_UTC+2")],
+        [btn("🇹🇷 UTC+3  Istanbul",      "tz_UTC+3"), btn("🇺🇸 UTC-5  New York", "tz_UTC-5")],
+        [InlineKeyboardButton("← Назад", callback_data="s_back")],
     ])
 
 def markup_wcd(wcd: int) -> InlineKeyboardMarkup:
@@ -518,14 +524,12 @@ def markup_wcd(wcd: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("← Назад", callback_data="s_back")],
     ])
 
-def text_main(current_tz: str, wcd: int) -> str:
-    tz_label_map = {v[0]: v[1] for v in TZ_MAP.values()}
-    tz_display   = tz_label_map.get(current_tz, current_tz)
-    now_local    = datetime.now(pytz.timezone(current_tz))
+def text_main(tz_key: str, wcd: int) -> str:
+    now_local = tz_now(tz_key)
     return (
         "⚙️ <b>Налаштування</b>\n"
         "──────────────────────\n"
-        f"🕐 Часовий пояс: <b>{tz_display}</b>\n"
+        f"🕐 Часовий пояс: <b>{tz_label(tz_key)}</b>\n"
         f"🕐 Час зараз: <b>{now_local.strftime('%H:%M')}</b>\n\n"
         f"📅 Тиждень оновлюється: <b>{WCD_NAMES[wcd]}</b>\n"
         "<i>(у цей день /week переключається на наступний тиждень)</i>"
@@ -572,7 +576,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     data = query.data
 
-    def _cur_tz():  return get_pref("timezone", "Europe/Warsaw")
+    def _cur_tz():  return get_pref("tz_key", "tz_UTC+1")
     def _cur_wcd(): return get_pref("week_change_day", 5)
     def _cur_nm():  return get_pref("notify_morning", True)
     def _cur_nr():  return get_pref("notify_release", True)
@@ -625,11 +629,10 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
 
     # ── Зберегти часовий пояс → повернутись на головний ──
     if data in TZ_MAP:
-        tz_name, _ = TZ_MAP[data]
-        set_pref("timezone", tz_name)
+        set_pref("tz_key", data)
         await query.edit_message_text(
-            text_main(tz_name, _cur_wcd()), parse_mode="HTML",
-            reply_markup=markup_main(tz_name, _cur_wcd()))
+            text_main(data, _cur_wcd()), parse_mode="HTML",
+            reply_markup=markup_main(data, _cur_wcd()))
         return
 
     # ── Зберегти день переактуалізації → повернутись на головний ──

@@ -446,12 +446,13 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────
 
 # tz_key → (fixed_offset_minutes, display_label)
-# Мітки відповідають ЛІТНЬОМУ часу (як зараз)
+# Актуальні офсети станом на літо 2025+
+# Київ = UTC+3 постійно (з 2022, без переходу на зимовий час)
 TZ_MAP = {
-    "tz_UTC+0": (   0, "🌍 UTC+0 — Reykjavik / Лондон (зима)"),
+    "tz_UTC+0": (   0, "🌍 UTC+0 — Рейк'явік / Лондон (зима)"),
     "tz_UTC+1": (  60, "🇬🇧 UTC+1 — Лондон, Лісабон (літо)"),
-    "tz_UTC+2": ( 120, "🇵🇱 UTC+2 — Варшава, Київ, Берлін (літо)"),
-    "tz_UTC+3": ( 180, "🇹🇷 UTC+3 — Стамбул, Москва"),
+    "tz_UTC+2": ( 120, "🇵🇱 UTC+2 — Варшава, Берлін, Париж (літо)"),
+    "tz_UTC+3": ( 180, "🇺🇦 UTC+3 — Київ, Стамбул, Москва"),
     "tz_UTC-5": (-300, "🇺🇸 UTC-5 — Нью-Йорк, Торонто (зима)"),
 }
 
@@ -533,9 +534,9 @@ def markup_tz() -> InlineKeyboardMarkup:
         prefix = "✅ " if cur == key else ""
         return InlineKeyboardButton(f"{prefix}{label}", callback_data=key)
     return InlineKeyboardMarkup([
-        [btn("🌍 UTC+0  Reykjavik",      "tz_UTC+0")],
-        [btn("🇬🇧 UTC+1  London (літо)",  "tz_UTC+1"), btn("🇵🇱 UTC+2  Warsaw/Kyiv", "tz_UTC+2")],
-        [btn("🇹🇷 UTC+3  Istanbul",       "tz_UTC+3"), btn("🇺🇸 UTC-5  New York", "tz_UTC-5")],
+        [btn("🌍 UTC+0  Рейк'явік",       "tz_UTC+0")],
+        [btn("🇬🇧 UTC+1  Лондон (літо)",  "tz_UTC+1"), btn("🇵🇱 UTC+2  Варшава/Берлін", "tz_UTC+2")],
+        [btn("🇺🇦 UTC+3  Київ/Стамбул",   "tz_UTC+3"), btn("🇺🇸 UTC-5  Нью-Йорк", "tz_UTC-5")],
         [InlineKeyboardButton("← Назад", callback_data="s_back")],
     ])
 

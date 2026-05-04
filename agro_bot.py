@@ -382,22 +382,39 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
              "──────────────────────"]
     found = False
     wd, m = now.weekday(), now.month
+
     if wd == 0 and 4 <= m <= 11:
+        t = TICKERS["crop_progress"]
         lines.append(f"🌱 {convert_time('22:00')} — {a('USDA Crop Progress', LINKS['crop'])}")
+        lines.append(f"   🟢 {t['direct']}")
+        lines.append(f"   🟡 {t['indirect']}")
         found = True
     if wd == 2:
+        t = TICKERS["eia"]
         lines.append(f"🛢 {convert_time('16:30')} — {a('EIA Petroleum Status Report', LINKS['eia'])}")
+        lines.append(f"   🟢 {t['direct']}")
+        lines.append(f"   🟡 {t['indirect']}")
         found = True
     if wd == 3:
+        t = TICKERS["export_sales"]
         lines.append(f"📊 {convert_time('14:30')} — {a('USDA Export Sales', LINKS['export_sales'])}")
+        lines.append(f"   🟢 {t['direct']}")
+        lines.append(f"   🟡 {t['indirect']}")
         found = True
     if wd == 4:
+        t = TICKERS["cot"]
         lines.append(f"📈 {convert_time('21:30')} — {a('COT Report (CFTC)', LINKS['cot'])}")
+        lines.append(f"   🟢 {t['direct']}")
         found = True
     for ev in ONE_TIME:
         if ev["date"].date() == now.date():
             lines.append(f"{ev['icon']} {convert_time(ev['preview_time'])} — {a(ev['name'], ev.get('link',''))}")
+            if ev.get("direct"):
+                lines.append(f"   🟢 {ev['direct']}")
+            if ev.get("indirect"):
+                lines.append(f"   🟡 {ev['indirect']}")
             found = True
+
     if not found:
         lines.append("Сьогодні запланованих звітів немає.")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
